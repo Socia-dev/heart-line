@@ -1,12 +1,12 @@
 import { pct, useApi } from "../api";
+import Fold from "../components/Fold";
 
 type At = { flagged: number; found: number; sensitivity: number; ppv: number };
 type FairRow = { group: string; people: number; with_fh: number; model_b: At; dlcn6: At };
 type Evaluation = {
-  label: string;
   population: { people: number; with_labs: number; with_fh_with_labs: number; with_fh_total: number };
   metrics: Record<string, { auroc: number; auprc: number }>;
-  matched_workload: { flag_count: number; note: string } & Record<"DLCN" | "Model A" | "Model B", At>;
+  matched_workload: { flag_count: number } & Record<"DLCN" | "Model A" | "Model B", At>;
   thresholds: (At & { threshold: number })[];
   worklist_threshold: At & { threshold: number; why: string };
   fairness: Record<string, FairRow[]>;
@@ -14,9 +14,9 @@ type Evaluation = {
 };
 
 const METHODS = [
-  ["DLCN", "Dutch Lipid Clinic Network score", "The usual clinical score, using family history written in the chart"],
-  ["Model A", "Model A", "One patient's own record"],
-  ["Model B", "Model B, family-linked", "Model A plus what relatives' records show"],
+  ["DLCN", "DLCN score (usual clinical score)"],
+  ["Model A", "Heart Line, patient's own record"],
+  ["Model B", "Heart Line, with relatives' records"],
 ] as const;
 
 export default function Model() {
@@ -24,176 +24,151 @@ export default function Model() {
   if (error) return <p className="error">{error}</p>;
   if (!e) return <p className="muted">Loading</p>;
   const m = e.matched_workload;
-  const gain = m["Model B"].found - m.DLCN.found;
+  const max = Math.max(...METHODS.map(([k]) => m[k].found));
   return (
     <div className="stack">
       <div>
         <h1>Model</h1>
-        <p className="lede">
-          How well each method finds familial hypercholesterolaemia among {e.population.with_labs.toLocaleString()} synthetic people with at
-          least one cholesterol result, {e.population.with_fh_with_labs} of whom have it. All numbers are on synthetic data.
-        </p>
+        <p className="lede">How many people with inherited high cholesterol each method finds. All numbers are on synthetic data.</p>
       </div>
-
-      <section className="notice">
-        <h2>Same workload, more people found</h2>
-        <p style={{ margin: 0 }}>
-          If clinicians review {m.flag_count} people, the number DLCN 6 or more flags, the family-linked model finds {m["Model B"].found} people
-          with FH against {m.DLCN.found} for DLCN. That is {gain} more people found for the same number of reviews. On synthetic data.
-        </p>
-      </section>
-
-      <div className="grid g3">
-        {METHODS.map(([k, name, what]) => (
-          <section key={k} className="card">
-            <h3>{name}</h3>
-            <p className="small muted">{what}</p>
-            <div className="row" style={{ gap: 24 }}>
-              <div className="stat">
-                <div className="n">{e.metrics[k].auroc.toFixed(3)}</div>
-                <div className="l">AUROC</div>
-              </div>
-              <div className="stat">
-                <div className="n">{e.metrics[k].auprc.toFixed(3)}</div>
-                <div className="l">AUPRC</div>
-              </div>
-            </div>
-          </section>
-        ))}
-      </div>
-
-      <section className="card table-wrap">
-        <h2>At the same number flagged</h2>
-        <p className="muted small">{m.note} On synthetic data.</p>
-        <table>
-          <thead>
-            <tr>
-              <th>Method</th>
-              <th className="num">Flagged</th>
-              <th className="num">With FH found</th>
-              <th className="num">Sensitivity</th>
-              <th className="num">PPV</th>
-            </tr>
-          </thead>
-          <tbody>
-            {METHODS.map(([k, name]) => (
-              <tr key={k} className={k === "Model B" ? "best" : ""}>
-                <td>{name}</td>
-                <td className="num">{m[k].flagged}</td>
-                <td className="num">{m[k].found}</td>
-                <td className="num">{pct(m[k].sensitivity)}</td>
-                <td className="num">{pct(m[k].ppv)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="card table-wrap">
-        <h2>Worklist cut-off</h2>
-        <p className="muted">
-          The worklist uses a model B score of {pct(e.worklist_threshold.threshold)} or more. {e.worklist_threshold.why} It flags{" "}
-          {e.worklist_threshold.flagged} people, finds {pct(e.worklist_threshold.sensitivity)} of those with FH, and {pct(e.worklist_threshold.ppv)} of
-          flags turn out to have it. On synthetic data.
-        </p>
-        <table className="small">
-          <thead>
-            <tr>
-              <th className="num">Model B score at least</th>
-              <th className="num">Flagged</th>
-              <th className="num">Found</th>
-              <th className="num">Sensitivity</th>
-              <th className="num">PPV</th>
-            </tr>
-          </thead>
-          <tbody>
-            {e.thresholds.map((t) => (
-              <tr key={t.threshold} className={t.threshold === e.worklist_threshold.threshold ? "best" : ""}>
-                <td className="num">{pct(t.threshold, t.threshold < 0.1 ? 0 : 0)}</td>
-                <td className="num">{t.flagged}</td>
-                <td className="num">{t.found}</td>
-                <td className="num">{pct(t.sensitivity)}</td>
-                <td className="num">{pct(t.ppv)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
 
       <section className="card">
-        <h2>Fairness checks</h2>
-        <p className="muted small">
-          Sensitivity and PPV by group, for model B at the worklist cut-off and for DLCN 6 or more. Small groups have wide uncertainty. On synthetic
-          data.
+        <h2>Same workload, more people found</h2>
+        <p className="muted">
+          If doctors review {m.flag_count} flagged people, this is how many of them actually have FH. Out of {e.population.with_fh_with_labs} people
+          with FH and a cholesterol result.
         </p>
-        <div className="grid g2">
-          {Object.entries(e.fairness).map(([title, rows]) => (
-            <div key={title} className="table-wrap">
-              <h3>{title}</h3>
-              <table className="small">
-                <thead>
-                  <tr>
-                    <th>Group</th>
-                    <th className="num">With FH</th>
-                    <th className="num">Sens. B</th>
-                    <th className="num">PPV B</th>
-                    <th className="num">Sens. DLCN</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.group}>
-                      <td>
-                        {r.group}
-                        <div className="muted">{r.people.toLocaleString()} people</div>
-                      </td>
-                      <td className="num">{r.with_fh}</td>
-                      <td className="num">{r.with_fh ? pct(r.model_b.sensitivity) : ""}</td>
-                      <td className="num">{r.model_b.flagged ? pct(r.model_b.ppv) : ""}</td>
-                      <td className="num">{r.with_fh ? pct(r.dlcn6.sensitivity) : ""}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <div className="bars" style={{ marginTop: 16 }}>
+          {METHODS.map(([k, name]) => (
+            <div key={k} className={`bar-row ${k === "Model B" ? "best" : ""}`}>
+              <span>{name}</span>
+              <div className="track">
+                <div className="fill" style={{ width: `${(m[k].found / max) * 100}%` }} />
+              </div>
+              <strong className="num" style={{ textAlign: "right" }}>
+                {m[k].found}
+              </strong>
             </div>
           ))}
         </div>
+        <p style={{ marginTop: 16, marginBottom: 0 }}>
+          Using relatives' records finds <strong>{m["Model B"].found - m.DLCN.found} more people</strong> than the DLCN score for the same number of
+          reviews.
+        </p>
       </section>
 
-      <section className="card">
-        <h2>Model card</h2>
-        <dl className="facts">
-          <dt>Intended use</dt>
-          <dd>{e.model_card.intended_use}</dd>
-          <dt>Data</dt>
-          <dd>{e.model_card.data}</dd>
-          <dt>Validation</dt>
-          <dd>{e.model_card.validation}</dd>
-          <dt>Relatives' data</dt>
-          <dd>{e.model_card.family_data_governance}</dd>
-          <dt>Limits</dt>
-          <dd>
-            <ul className="reasons">
-              {e.model_card.limits.map((l) => (
-                <li key={l}>{l}</li>
+      <div>
+        <Fold title="Accuracy" note="AUROC, AUPRC, sensitivity and PPV">
+          <table className="small">
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th className="num">AUROC</th>
+                <th className="num">AUPRC</th>
+                <th className="num">Sensitivity at {m.flag_count}</th>
+                <th className="num">PPV at {m.flag_count}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {METHODS.map(([k, name]) => (
+                <tr key={k}>
+                  <td>{name}</td>
+                  <td className="num">{e.metrics[k].auroc.toFixed(3)}</td>
+                  <td className="num">{e.metrics[k].auprc.toFixed(3)}</td>
+                  <td className="num">{pct(m[k].sensitivity)}</td>
+                  <td className="num">{pct(m[k].ppv)}</td>
+                </tr>
               ))}
-            </ul>
-          </dd>
-          <dt>Features</dt>
-          <dd className="small">
-            {Object.entries(e.model_card.features).map(([k, v]) => (
-              <p key={k}>
-                <strong>{k}:</strong> {v.join(", ")}
-              </p>
+            </tbody>
+          </table>
+        </Fold>
+
+        <Fold title="Worklist cut-off" note={`${e.worklist_threshold.flagged} flagged, ${pct(e.worklist_threshold.sensitivity)} found`}>
+          <p className="muted">
+            The worklist flags anyone with a score of {pct(e.worklist_threshold.threshold)} or more. {e.worklist_threshold.why}
+          </p>
+          <table className="small">
+            <thead>
+              <tr>
+                <th className="num">Score at least</th>
+                <th className="num">Flagged</th>
+                <th className="num">Sensitivity</th>
+                <th className="num">PPV</th>
+              </tr>
+            </thead>
+            <tbody>
+              {e.thresholds.map((t) => (
+                <tr key={t.threshold} className={t.threshold === e.worklist_threshold.threshold ? "best" : ""}>
+                  <td className="num">{pct(t.threshold)}</td>
+                  <td className="num">{t.flagged}</td>
+                  <td className="num">{pct(t.sensitivity)}</td>
+                  <td className="num">{pct(t.ppv)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Fold>
+
+        <Fold title="Fairness" note="By sex, nationality group and age">
+          <p className="muted small">
+            Share of people with FH that the worklist finds in each group, against DLCN 6 or more. Small groups vary a lot.
+          </p>
+          <div className="grid g2">
+            {Object.entries(e.fairness).map(([title, rows]) => (
+              <div key={title} className="table-wrap">
+                <h3>{title}</h3>
+                <table className="small">
+                  <thead>
+                    <tr>
+                      <th>Group</th>
+                      <th className="num">With FH</th>
+                      <th className="num">Heart Line finds</th>
+                      <th className="num">DLCN finds</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.group}>
+                        <td>{r.group}</td>
+                        <td className="num">{r.with_fh}</td>
+                        <td className="num">{r.with_fh ? pct(r.model_b.sensitivity) : ""}</td>
+                        <td className="num">{r.with_fh ? pct(r.dlcn6.sensitivity) : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ))}
-          </dd>
-        </dl>
-      </section>
+          </div>
+        </Fold>
+
+        <Fold title="Model card" note="Use, data and limits">
+          <dl className="facts">
+            <dt>Intended use</dt>
+            <dd>{e.model_card.intended_use}</dd>
+            <dt>Data</dt>
+            <dd>{e.model_card.data}</dd>
+            <dt>Validation</dt>
+            <dd>{e.model_card.validation}</dd>
+            <dt>Relatives' data</dt>
+            <dd>{e.model_card.family_data_governance}</dd>
+            <dt>Limits</dt>
+            <dd>
+              <ul className="reasons">
+                {e.model_card.limits.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            </dd>
+          </dl>
+        </Fold>
+      </div>
+
       <p className="synthetic">
-        Every number on this page comes from a synthetic population of {e.population.people.toLocaleString()} people. Of the{" "}
-        {e.population.with_fh_total} people with FH in it, {e.population.with_fh_total - e.population.with_fh_with_labs} have no cholesterol results
-        and cannot be flagged by any method; family testing is how they get found.
+        Synthetic population of {e.population.people.toLocaleString()} people. {e.population.with_fh_total - e.population.with_fh_with_labs} of the{" "}
+        {e.population.with_fh_total} people with FH have no cholesterol result, so no method can flag them. Family testing is how they get found.
       </p>
     </div>
   );
 }
+

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useApi, fmtDate } from "./api";
+import DemoBar from "./components/DemoBar";
 import Overview from "./screens/Overview";
 import Worklist from "./screens/Worklist";
 import Patient from "./screens/Patient";
@@ -26,15 +26,13 @@ const NAV = [
   ["", "Overview"],
   ["worklist", "Worklist"],
   ["families", "Families"],
-  ["wellchild", "Well-Child"],
+  ["wellchild", "Children"],
   ["model", "Model"],
-  ["audit", "Audit"],
 ] as const;
 
 export default function App() {
   const route = useRoute();
   const [section, arg] = route;
-  const summary = useApi<{ today: string }>("/api/summary");
 
   let screen;
   switch (section) {
@@ -88,10 +86,13 @@ export default function App() {
               </a>
             ))}
           </nav>
-          {summary.data && <span className="today">Demo date {fmtDate(summary.data.today)}</span>}
         </div>
       </header>
+      <DemoBar />
       <main className="wrap main">{screen}</main>
+      <footer className="wrap footer small muted">
+        Heart Line prototype on synthetic data. <a href="#/audit">Audit log</a>
+      </footer>
     </>
   );
 }

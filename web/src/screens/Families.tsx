@@ -58,7 +58,7 @@ export default function Families() {
             ))}
           </ul>
         ) : (
-          <p className="muted">No family testing has started yet. Confirm a case, record consent and start family testing from the patient page.</p>
+          <p className="muted">Nothing yet. Family testing starts from a confirmed patient's page.</p>
         )}
       </section>
 
@@ -71,15 +71,13 @@ export default function Families() {
             {abroad ? `. Family letters cover ${abroad} relatives abroad.` : ""}
           </span>
         </div>
-        <p className="muted small">Sent by mock SMS and WhatsApp. The invitation never says who triggered it or why.</p>
+        <p className="muted small">Sent by mock SMS. The invitation never says who it came from or why.</p>
         {data.invitations.length ? (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Relative</th>
-                  <th>Language</th>
-                  <th>Sent</th>
                   <th>Status</th>
                   <th>From the family of</th>
                   <th></th>
@@ -92,17 +90,15 @@ export default function Families() {
                       <a href={`#/patient/${i.relative.id}`}>{i.relative.name}</a>
                       <div className="small muted">{i.relative.age}</div>
                     </td>
-                    <td>{i.lang === "ar" ? "Arabic" : "English"}</td>
-                    <td>{fmtDate(i.sent_at)}</td>
                     <td>
                       <span className={`pill ${i.status}`}>{INV[i.status]}</span>
-                      {i.slot && <div className="small muted">{i.slot.replace(" | ", ", ")}</div>}
+
                     </td>
                     <td>
                       <a href={`#/patient/${i.via.id}`}>{i.via.name}</a>
                     </td>
                     <td>
-                      <a href={`#/invite/${i.token}`}>See what they see</a>
+                      <a href={`#/invite/${i.token}`}>Preview invitation</a>
                     </td>
                   </tr>
                 ))}

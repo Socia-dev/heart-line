@@ -15,16 +15,10 @@ type Item = Brief & {
 };
 type Page = { total: number; page: number; per_page: number; items: Item[] };
 
-const STATUSES: [string, string][] = [
-  ["open", "Open"],
+const TABS: [string, string][] = [
+  ["open", "To review"],
+  ["confirmed", "Confirmed"],
   ["", "All"],
-  ["flagged", "Flagged"],
-  ["in_review", "In review"],
-  ["test_ordered", "Test ordered"],
-  ["confirmed_genetic", "Confirmed (genetic)"],
-  ["clinical_fh", "Clinical FH"],
-  ["no_variant", "No variant found"],
-  ["dismissed", "Dismissed"],
 ];
 
 export default function Worklist() {
@@ -44,21 +38,18 @@ export default function Worklist() {
     <div className="stack">
       <div>
         <h1>Worklist</h1>
-        <p className="lede">
-          People flagged from routine cholesterol results, highest score first. A clinician reviews every one before
-          anything else happens.
-        </p>
+        <p className="lede">People whose cholesterol results suggest inherited high cholesterol, most likely first.</p>
       </div>
       <div className="row">
-        <input placeholder="Search by name or MRN" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 260 }} aria-label="Search" />
-        <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
-          {STATUSES.map(([v, l]) => (
-            <option key={v} value={v}>
+        <div className="tabs" role="tablist">
+          {TABS.map(([v, l]) => (
+            <button key={v} role="tab" aria-selected={status === v} className={status === v ? "on" : ""} onClick={() => setStatus(v)}>
               {l}
-            </option>
+            </button>
           ))}
-        </select>
-        {data && <span className="muted small">{data.total.toLocaleString()} cases</span>}
+        </div>
+        <input placeholder="Search by name or MRN" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 240 }} aria-label="Search" />
+        {data && <span className="muted small">{data.total.toLocaleString()} people</span>}
       </div>
       {error && <p className="error">{error}</p>}
       <div className="card table-wrap" style={{ padding: 8 }}>
@@ -66,9 +57,8 @@ export default function Worklist() {
           <thead>
             <tr>
               <th>Patient</th>
-              <th className="num">Score</th>
-              <th>DLCN</th>
-              <th>Why flagged</th>
+              <th>Main reason</th>
+              <th className="num">Chance of FH</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -78,16 +68,13 @@ export default function Worklist() {
                 <td>
                   <a href={`#/patient/${r.id}`}>{r.name}</a> {r.new && <span className="pill new">New result</span>}
                   <div className="small muted">
-                    {r.age}, {r.sex === "M" ? "male" : "female"}, {r.group}. {r.mrn}
-                    {r.source !== "detection" && ` Found ${r.source === "cascade" ? "through a relative" : "at Well-Child"}.`}
+                    {r.age}, {r.sex === "M" ? "male" : "female"}
                   </div>
                 </td>
-                <td className="num">{r.score == null ? "" : scorePct(r.score)}</td>
-                <td>
-                  {r.dlcn_band ?? ""}
-                  {r.dlcn_total != null && <span className="muted"> ({r.dlcn_total})</span>}
+                <td className="small">
+                  {r.source === "detection" ? r.reasons[0] ?? "" : r.source === "cascade" ? "Found through a relative" : "Found at a Well-Child Visit"}
                 </td>
-                <td className="small">{r.reasons.slice(0, 2).join(". ")}</td>
+                <td className="num">{r.score == null ? "" : scorePct(r.score)}</td>
                 <td>
                   <span className={`pill ${r.status}`}>{r.status_label}</span>
                 </td>
@@ -95,7 +82,7 @@ export default function Worklist() {
             ))}
             {data && data.items.length === 0 && (
               <tr>
-                <td colSpan={5} className="muted">
+                <td colSpan={4} className="muted">
                   No cases match.
                 </td>
               </tr>

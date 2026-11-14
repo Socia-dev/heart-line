@@ -508,3 +508,132 @@ dl.facts dd {
     font-size: 52px;
   }
 }
+
+/* Demo bar: presenter controls under the header */
+.demobar {
+  background: var(--sunken);
+}
+.demobar-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.demobar button {
+  padding: 6px 12px;
+  font-size: 14px;
+}
+.demobar button:not(.primary) {
+  background: var(--surface);
+}
+.demobar button.ghost {
+  background: transparent;
+  color: var(--muted);
+}
+.demobar-msg {
+  margin-left: 4px;
+}
+.footer {
+  padding-bottom: 32px;
+}
+
+/* Folded detail sections */
+details.fold {
+  background: var(--surface);
+  border-radius: var(--r);
+}
+details.fold + details.fold {
+  margin-top: 8px;
+}
+details.fold > summary {
+  cursor: pointer;
+  padding: 14px 20px;
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+details.fold > summary::-webkit-details-marker {
+  display: none;
+}
+details.fold > summary::after {
+  content: "Show";
+  color: var(--brand);
+  font-weight: 500;
+  font-size: 14px;
+}
+details.fold[open] > summary::after {
+  content: "Hide";
+}
+details.fold > summary .muted {
+  font-weight: 400;
+  margin-right: auto;
+}
+details.fold > .fold-body {
+  padding: 0 20px 20px;
+}
+.next {
+  background: var(--surface);
+  border-radius: var(--r);
+  padding: 20px;
+}
+.next h2 {
+  margin-bottom: 6px;
+}
+.next .row {
+  margin-top: 14px;
+}
+.big-score {
+  font-size: 40px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.bars .bar-row {
+  display: grid;
+  grid-template-columns: 220px 1fr 64px;
+  gap: 12px;
+  align-items: center;
+}
+.bars .bar-row + .bar-row {
+  margin-top: 10px;
+}
+.bars .track {
+  background: var(--sunken);
+  border-radius: 6px;
+  height: 26px;
+  overflow: hidden;
+}
+.bars .fill {
+  height: 100%;
+  background: #a8a29e;
+  border-radius: 6px;
+}
+.bars .bar-row.best .fill {
+  background: var(--brand);
+}
+@media (max-width: 600px) {
+  .bars .bar-row {
+    grid-template-columns: 1fr 48px;
+  }
+  .bars .bar-row > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+.tabs {
+  display: inline-flex;
+  background: var(--sunken);
+  border-radius: 999px;
+  padding: 3px;
+}
+.tabs button {
+  border-radius: 999px;
+  padding: 5px 14px;
+  background: transparent;
+}
+.tabs button.on {
+  background: var(--surface);
+}

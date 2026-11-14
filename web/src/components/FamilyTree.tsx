@@ -11,19 +11,29 @@ export type TreeNode = {
   father_id: number | null;
 };
 
-export const STATUS: Record<string, { label: string; fill: string; ink?: string }> = {
+// Six colours. The node's third line carries the finer detail (booked, Well-Child due).
+const GROUPS = {
   index: { label: "This patient", fill: "var(--s-index)", ink: "#fff" },
-  confirmed: { label: "Confirmed", fill: "var(--s-confirmed)" },
-  assessing: { label: "Being assessed", fill: "var(--s-assessing)" },
-  invited: { label: "Invited", fill: "var(--s-invited)" },
-  booked: { label: "Check booked", fill: "var(--s-booked)" },
-  negative: { label: "Tested negative", fill: "var(--s-negative)" },
-  wellchild: { label: "Well-Child due", fill: "var(--s-wellchild)" },
-  no_response: { label: "No response", fill: "var(--s-no-response)" },
-  not_confirmed: { label: "Not confirmed", fill: "var(--s-not-confirmed)" },
-  unknown: { label: "Not tested", fill: "var(--s-unknown)" },
+  fh: { label: "Has FH", fill: "var(--s-confirmed)" },
+  waiting: { label: "Invited, test pending", fill: "var(--s-invited)" },
+  clear: { label: "Tested clear", fill: "var(--s-negative)" },
+  none: { label: "Not tested", fill: "var(--s-unknown)", border: true },
   deceased: { label: "Deceased", fill: "var(--s-deceased)", ink: "#fff" },
-  abroad: { label: "Lives abroad", fill: "var(--s-abroad)" },
+} as const;
+type Group = { label: string; fill: string; ink?: string; border?: boolean };
+
+export const STATUS: Record<string, Group & { group: keyof typeof GROUPS }> = {
+  index: { ...GROUPS.index, group: "index" },
+  confirmed: { ...GROUPS.fh, label: "Has FH", group: "fh" },
+  assessing: { ...GROUPS.waiting, label: "Being assessed", group: "waiting" },
+  invited: { ...GROUPS.waiting, label: "Invited", group: "waiting" },
+  booked: { ...GROUPS.waiting, label: "Check booked", group: "waiting" },
+  wellchild: { ...GROUPS.waiting, label: "Well-Child test due", group: "waiting" },
+  negative: { ...GROUPS.clear, label: "Tested clear", group: "clear" },
+  no_response: { ...GROUPS.none, label: "No response", group: "none" },
+  not_confirmed: { ...GROUPS.none, label: "Not confirmed", group: "none" },
+  unknown: { ...GROUPS.none, label: "Not tested", group: "none" },
+  deceased: { ...GROUPS.deceased, group: "deceased" },
 };
 
 const SLOT = 128;
@@ -88,10 +98,6 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
     }
     cursor += span;
   }
-  if (abroad > 0) {
-    placed.push({ key: "abroad", x: cursor + 0.5, gen: 0, status: "abroad", label: [`${abroad} relatives`, "living abroad", "Family letter"] });
-    cursor += 1;
-  }
 
   // Parents above the siblings, grandparents above each parent.
   const sibXs = row0.map((m) => pos.get(m.id)!);
@@ -129,6 +135,7 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
   const cy = (g: number) => (g - gMin) * ROW + 4;
 
   return (
+    <>
     <div className="tree-wrap">
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Family tree">
         {placed
@@ -161,8 +168,7 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
                 height={NH}
                 rx={10}
                 fill={st.fill}
-                stroke={p.status === "unknown" || p.status === "abroad" ? "#c9c4be" : "transparent"}
-                strokeDasharray={p.status === "abroad" ? "4 3" : undefined}
+                stroke={st.border ? "#c9c4be" : "transparent"}
               />
               <text x={x + NW / 2} y={y + 21} textAnchor="middle" fontSize="13" fontWeight="650" fill={st.ink ?? "#1c1917"}>
                 {lines[0].length > 15 ? lines[0].slice(0, 14) + "." : lines[0]}
@@ -178,17 +184,22 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
         })}
       </svg>
     </div>
+    {abroad > 0 && (
+      <p className="small muted" style={{ marginTop: 8 }}>
+        {abroad} more relatives live abroad. They get a family letter the patient can share.
+      </p>
+    )}
+    </>
   );
 }
 
 export function Legend() {
-  const keys = ["index", "confirmed", "assessing", "invited", "booked", "negative", "wellchild", "no_response", "unknown", "deceased", "abroad"];
   return (
     <div className="legend">
-      {keys.map((k) => (
+      {Object.entries(GROUPS).map(([k, g]) => (
         <span key={k}>
-          <i style={{ background: STATUS[k].fill }} />
-          {STATUS[k].label}
+          <i style={{ background: g.fill }} />
+          {g.label}
         </span>
       ))}
     </div>

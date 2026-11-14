@@ -41,14 +41,16 @@ python -m unittest discover -s tests -t .
 
 ## Demo story (about 3 minutes)
 
-1. **Overview**, select **New lab result**. A new LDL result arrives, Heart Line scores it live and flags the patient, with reasons. Open the patient.
-2. Select **Order genetic test**. Back on the overview, **Advance two weeks**. The patient page now shows the variant found.
-3. Select **Patient agrees**, then **Start family testing**. Relatives appear on the family tree as invited, and young children as Well-Child due. On **Families**, open **See what they see** for one relative. Switch to Arabic (right to left) and book a check.
-4. **Advance two weeks** again. Relatives get tested. One tests positive, consents and starts family testing for their own family: their children turn blue on the tree and appear on **Well-Child**. **Families** shows the chain of cases.
-5. **Overview** shows the 12-month pilot projection: people found per person found by screening.
-6. **Model** shows the family-linked model against the DLCN score at the same workload, the fairness tables and the model card. **Audit** shows every step.
+The demo bar under the header (New lab result, Advance two weeks, Reset) is on every screen, so most of the story happens on one patient page.
 
-**Reset demo** on the overview clears cases, invitations, Well-Child flags and the audit log, and keeps the population. Random outcomes are seeded by person, so the demo plays out the same way each time.
+1. Select **New lab result**. A new LDL result arrives, Heart Line scores it live and opens the flagged patient, with the reasons.
+2. Select **Order genetic test**, then **Advance two weeks**. The variant is found.
+3. Select **Patient agrees**, then **Start family testing**. Relatives turn yellow on the family tree. On **Families**, open **Preview invitation** for one relative, switch to Arabic (right to left) and book a check.
+4. **Advance two weeks** again. One relative tests positive and starts family testing for their own family; their children appear on the tree and on **Children**.
+5. **Overview** shows the 12-month pilot projection: people found per person found by screening.
+6. **Model** shows Heart Line against the DLCN score at the same workload. Accuracy tables, fairness and the model card are folded underneath. The audit log is linked in the footer.
+
+**Reset** clears cases, invitations, Well-Child flags and the audit log, and keeps the population. Random outcomes are seeded by person, so the demo plays out the same way each time.
 
 ## How it works
 
@@ -67,7 +69,7 @@ python -m unittest discover -s tests -t .
 | `fhir.py` | FHIR R4 Bundle: Patient, RelatedPerson, Observation (LOINC), RiskAssessment, Condition (SNOMED 398036000). |
 | `api.py` | FastAPI app. |
 
-`web/src/screens/` holds the eight screens: Overview, Worklist, Patient, Families, Invite (relative's phone view), Well-Child, Model and Audit.
+`web/src/screens/` holds the eight screens: Overview, Worklist, Patient, Families, Invite (relative's phone view), Children (Well-Child), Model and Audit.
 
 ### Case statuses
 

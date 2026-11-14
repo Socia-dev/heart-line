@@ -114,6 +114,8 @@ def worklist(status: str = "", q: str = "", page: int = Query(1, ge=1), per_page
     if status == "open":
         where.append(f"c.status IN ({','.join('?' * len(cascade.OPEN))})")
         args += list(cascade.OPEN)
+    elif status == "confirmed":
+        where.append("c.status IN ('confirmed_genetic', 'clinical_fh')")
     elif status:
         where.append("c.status=?")
         args.append(status)
