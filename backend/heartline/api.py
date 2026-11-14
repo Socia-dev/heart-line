@@ -168,7 +168,7 @@ def family_tree(con, pid: int) -> dict:
                           "mother_id": p["mother_id"], "father_id": p["father_id"],
                           "status": "index" if p["id"] == pid else relative_status(con, p["id"], b["deceased"])}
 
-    add(me, "This patient", 0)
+    add(me, "Patient", 0)
     first = store.first_degree(con, pid, include_deceased=True)
     for r, rel in first:
         gen = {"mother": -1, "father": -1, "son": 1, "daughter": 1}.get(rel, 0)
@@ -359,10 +359,14 @@ def wellchild(con: sqlite3.Connection = Depends(db)):
     for r in con.execute("SELECT * FROM wellchild ORDER BY due_date, id"):
         p = store.person(con, r["person_id"])
         a = store.age(p["birth_date"], on)
-        due = [("Lipid test at the Well-Child Visit" if a >= 2 else "Lipid test once the child turns 2")]
-        if r["status"] == "tested_positive":
-            due.append("Discuss statin treatment now" if a >= 8 else
-                       f"Discuss statin treatment from age 8 to 10 (around {date.fromisoformat(p['birth_date']).year + 8})")
+        if r["status"] == "due":
+            due = ["Lipid test at the Well-Child Visit" if a >= 2 else "Lipid test once the child turns 2"]
+        elif r["status"] == "tested_positive":
+            due = ["Refer to the lipid clinic",
+                   "Discuss statin treatment now" if a >= 8 else
+                   f"Discuss statin treatment from age 8 to 10 (around {date.fromisoformat(p['birth_date']).year + 8})"]
+        else:
+            due = ["No further cholesterol testing needed for this condition"]
         parents = [store.person(con, p[c]) for c in ("mother_id", "father_id") if p[c]]
         out.append({"id": r["id"], "status": r["status"], "due_date": r["due_date"], "flagged_at": r["flagged_at"],
                     "tested_at": r["tested_at"], "child": {**_person_brief(p, on), "age_years": round(a, 1)},
