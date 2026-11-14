@@ -80,7 +80,7 @@ def bundle(con, pid: int) -> dict:
                 "code": {"coding": [{"system": "http://snomed.info/sct", "code": "398036000",
                                      "display": "Familial hypercholesterolemia"}]},
                 "subject": {"reference": pref}, "recordedDate": c["updated_at"]}
-        cond["note"] = [{"text": f"Genetic: {c['variant']}" if c["variant"] else "Clinical diagnosis (DLCN 6 or more)"}]
+        cond["note"] = [{"text": f"Genetic: {c['found_variant']}" if c["found_variant"] else "Clinical diagnosis (DLCN 6 or more)"}]
         add(cond)
 
     return {"resourceType": "Bundle", "type": "collection",

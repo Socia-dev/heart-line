@@ -1,9 +1,10 @@
+import os
 from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
-DB_PATH = DATA / "heartline.db"
+DB_PATH = Path(os.environ.get("HEARTLINE_DB", DATA / "heartline.db"))
 MODEL_PATH = DATA / "model.joblib"
 EVAL_PATH = DATA / "evaluation.json"
 

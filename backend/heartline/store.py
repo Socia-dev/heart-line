@@ -11,7 +11,7 @@ DEMO_SCHEMA = """
 CREATE TABLE IF NOT EXISTS sim (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS cases (
   id INTEGER PRIMARY KEY, person_id INTEGER UNIQUE, source TEXT, index_of INTEGER, status TEXT,
-  created_at TEXT, updated_at TEXT, test_due TEXT, variant TEXT,
+  created_at TEXT, updated_at TEXT, test_due TEXT, found_variant TEXT,
   consent INTEGER, consent_by TEXT, consent_at TEXT, cascade_at TEXT
 );
 CREATE TABLE IF NOT EXISTS invitations (
@@ -35,8 +35,8 @@ CREATE INDEX IF NOT EXISTS cases_status ON cases(status);
 DEMO_TABLES = ("cases", "invitations", "wellchild", "family_letters", "audit", "sim")
 
 
-def connect(path=DB_PATH, schema: bool = True) -> sqlite3.Connection:
-    con = sqlite3.connect(path, check_same_thread=False, timeout=15)
+def connect(path=None, schema: bool = True) -> sqlite3.Connection:
+    con = sqlite3.connect(path or DB_PATH, check_same_thread=False, timeout=15)
     con.row_factory = sqlite3.Row
     if schema:
         con.executescript(DEMO_SCHEMA)

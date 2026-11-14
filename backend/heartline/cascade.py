@@ -64,7 +64,7 @@ def case_for_person(con, pid: int):
 
 def _new_case(con, pid: int, source: str, status: str, index_of: int | None = None, variant: str | None = None) -> int:
     d = today(con).isoformat()
-    cur = con.execute("INSERT INTO cases (person_id, source, index_of, status, created_at, updated_at, variant) "
+    cur = con.execute("INSERT INTO cases (person_id, source, index_of, status, created_at, updated_at, found_variant) "
                       "VALUES (?,?,?,?,?,?,?)", (pid, source, index_of, status, d, d, variant))
     return cur.lastrowid
 
@@ -100,7 +100,8 @@ def reset(con):
         con.execute(f"DELETE FROM scores WHERE person_id IN ({','.join('?' * len(live))})", live)
         con.execute("DELETE FROM labs WHERE source='live'")
     for t in store.DEMO_TABLES:
-        con.execute(f"DELETE FROM {t}")
+        con.execute(f"DROP TABLE IF EXISTS {t}")
+    con.executescript(store.DEMO_SCHEMA)
     con.commit()
     init_cases(con)
 
@@ -216,7 +217,7 @@ def book(con, token: str, slot: str) -> dict:
 
 def _family_variant(con, case_id: int) -> str | None:
     c = get_case(con, case_id)
-    return c["variant"] if c["status"] == "confirmed_genetic" else None
+    return c["found_variant"] if c["status"] == "confirmed_genetic" else None
 
 
 def _relative_positive(con, pid: int, family_variant: str | None, child: bool) -> bool:
@@ -230,7 +231,7 @@ def _positive_relative(con, pid: int, index_case: int, source: str, auto_cascade
     fv = _family_variant(con, index_case)
     cid = _new_case(con, pid, source, "confirmed_genetic" if fv else "clinical_fh", index_case, fv)
     audit(con, SYSTEM, "Confirmed by family test", f"case {cid}", pid,
-          {"variant": fv, "led_by_case": index_case} if fv else {"basis": "LDL cut-off", "led_by_case": index_case})
+          {"family_variant": fv, "led_by_case": index_case} if fv else {"basis": "LDL cut-off", "led_by_case": index_case})
     if auto_cascade:
         if roll(pid, "consent") < CONSENT_RATE:
             con.execute("UPDATE cases SET consent=1, consent_by='Patient (recorded by coordinator)', consent_at=? "
@@ -257,7 +258,7 @@ def advance(con, weeks: int = 2) -> dict:
         t = _truth(con, c["person_id"])
         found = t["fh"] > 0 and roll(c["person_id"], "detect") < DETECTION_SENSITIVITY
         if found:
-            _set_status(con, c["id"], "confirmed_genetic", variant=t["variant"])
+            _set_status(con, c["id"], "confirmed_genetic", found_variant=t["variant"])
             out["variants_found"] += 1
         else:
             _set_status(con, c["id"], "no_variant")

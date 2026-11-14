@@ -26,8 +26,8 @@ def _roll(*key) -> float:
     return random.Random(f"{SEED}:pilot:" + ":".join(map(str, key))).random()
 
 
-def run(path=DB_PATH, reviews_per_week: int = REVIEWS_PER_WEEK) -> dict:
-    con = sqlite3.connect(path)
+def run(path=None, reviews_per_week: int = REVIEWS_PER_WEEK) -> dict:
+    con = sqlite3.connect(path or DB_PATH)
     con.row_factory = sqlite3.Row
     people = {r["id"]: r for r in con.execute(
         "SELECT id, birth_date, death_date, mother_id, father_id, relatives_abroad FROM people")}
