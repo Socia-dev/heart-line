@@ -9,6 +9,7 @@ import json
 from datetime import datetime, timezone
 
 from . import store
+from .features import reason_texts
 
 LOINC = {"ldl": ("22748-8", "LDL cholesterol"), "tc": ("14647-2", "Total cholesterol"),
          "hdl": ("14646-4", "HDL cholesterol"), "tg": ("14927-8", "Triglycerides")}
@@ -67,7 +68,7 @@ def bundle(con, pid: int) -> dict:
                                                      "display": "Familial hypercholesterolemia"}]},
                              "probabilityDecimal": round(sc["prob_b"], 4)}],
              "basis": [{"display": f"DLCN {sc['dlcn_total']} ({sc['dlcn_band']})"}],
-             "note": [{"text": "; ".join(json.loads(sc["reasons"] or "[]"))},
+             "note": [{"text": "; ".join(reason_texts(json.loads(sc["reasons"] or "[]")))},
                       {"text": "Score from a model trained on synthetic data. Not for clinical use."}]})
 
     c = con.execute("SELECT * FROM cases WHERE person_id=?", (pid,)).fetchone()

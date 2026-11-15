@@ -1,11 +1,17 @@
 """Trains and evaluates the detection models, then writes the scores table.
 
-- Model A: one patient's own record.
-- Model B: model A plus linked first-degree relatives' records.
-- DLCN: the classic clinical score, using only family history recorded in the chart.
+Four methods are compared, named by what they use:
 
-Five-fold GroupKFold by clan_id keeps families on one side of each split. Out-of-fold
-predictions are everyone's scores. All numbers are on synthetic data.
+- DLCN: the standard clinical score, using only family history written in the chart.
+- DLCN with linked family: the same score, with family history taken from relatives' own records.
+- Heart Line, own record: a model that sees one patient's record.
+- Heart Line, linked family: the same model plus what first-degree relatives' records show.
+
+Comparing the first pair and the second pair separates "more data" from "better method".
+
+Five-fold GroupKFold by clan_id keeps families on one side of each split. Scores are
+calibrated inside the folds (isotonic regression on inner out-of-fold predictions), so the
+calibrated figure for a person never saw that person. All numbers are on synthetic data.
 
 Run: python -m heartline.train
 """
@@ -14,45 +20,93 @@ from __future__ import annotations
 import json
 import sqlite3
 import warnings
+from datetime import datetime, timezone
 
 import joblib
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
-from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.isotonic import IsotonicRegression
+from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sklearn.model_selection import GroupKFold
 
 from . import dlcn, features
 from .config import DB_PATH, EVAL_PATH, MODEL_PATH, SEED
+from .scoring import BANDS, MODEL_VERSION, NOT_FLAGGED, band_for
 
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
 
 PARAMS = dict(n_estimators=300, learning_rate=0.04, num_leaves=15, min_child_samples=25, subsample=0.8,
               subsample_freq=1, colsample_bytree=0.8, reg_lambda=1.0, random_state=SEED, verbose=-1)
 TARGET_SENS = 0.80
+N_BOOT = 200
+SMALL_GROUP = 20  # fewer people with FH than this: show the row as too small to read
+
+METHODS = {
+    "dlcn": "DLCN score",
+    "dlcn_linked": "DLCN with linked family records",
+    "own": "Heart Line, own record only",
+    "linked": "Heart Line, with linked family records",
+}
+
+# Published results, for the Model page. Sources are listed in docs/research/05-evidence-and-judging.md.
+PUBLISHED = {
+    "note": "Published figures come from real populations at a prevalence of about 1 in 250 unless stated. "
+            "Heart Line's figures come from a synthetic population at about 1 in 114 with complete family links "
+            "and few FH lookalikes, so they are higher than a real deployment would see.",
+    "rows": [
+        {"method": "DLCN 6 or more", "source": "Qureshi 2021", "sensitivity": 0.375, "ppv": 0.330},
+        {"method": "FAMCAT 1", "source": "Akyea 2020", "sensitivity": 0.775, "ppv": 0.0068},
+        {"method": "FAMCAT 2", "source": "Akyea 2020", "sensitivity": 0.694, "ppv": 0.0158},
+        {"method": "Gradient boosting", "source": "Akyea 2020", "sensitivity": 0.583, "ppv": 0.053},
+        {"method": "FIND FH, against genetic testing", "source": "Gidding 2023", "sensitivity": 0.121, "ppv": 0.059},
+    ],
+    "review": "Osei et al., JACC: Advances 2024, a scoping review of 14 algorithms across 27 studies.",
+}
 
 
 def model() -> lgb.LGBMClassifier:
     return lgb.LGBMClassifier(**PARAMS)
 
 
-def dlcn_for(row: pd.Series) -> dict:
+def dlcn_for(row: pd.Series, linked: bool = False) -> dict:
+    """DLCN from the chart. With linked=True, family history also comes from relatives' own records."""
     return dlcn.score(
         ldl_untreated=row["max_ldl_corr"], premature_cad=bool(row["early_cad"]), xanthoma=bool(row["xanthoma"]),
-        arcus_under_45=bool(row["arcus_u45"]), fhx_premature_cad=bool(row["fhx_cad"]),
-        fhx_high_ldl=bool(row["fhx_ldl"]))
+        arcus_under_45=bool(row["arcus_u45"]),
+        fhx_premature_cad=bool(row["fhx_cad"]) or (linked and bool(row["rel_early_cad"])),
+        fhx_high_ldl=bool(row["fhx_ldl"]) or (linked and row["rel_n_high_ldl"] > 0))
 
 
-def at_k(y: np.ndarray, s: np.ndarray, k: int) -> dict:
-    idx = np.argsort(-s, kind="stable")[:k]
-    tp = int(y[idx].sum())
-    return {"flagged": k, "found": tp, "sensitivity": tp / max(int(y.sum()), 1), "ppv": tp / max(k, 1)}
-
-
-def at_threshold(y: np.ndarray, flag: np.ndarray) -> dict:
+def rates(y: np.ndarray, flag: np.ndarray) -> dict:
     tp = int((y & flag).sum())
     n = int(flag.sum())
     return {"flagged": n, "found": tp, "sensitivity": tp / max(int(y.sum()), 1), "ppv": tp / max(n, 1)}
+
+
+def top_k(s: np.ndarray, k: int) -> np.ndarray:
+    flag = np.zeros(len(s), dtype=bool)
+    flag[np.argsort(-s, kind="stable")[:k]] = True
+    return flag
+
+
+def interval(fn, n: int, rng: np.random.Generator) -> list[float]:
+    """95% bootstrap interval for fn(sample indexes)."""
+    vals = []
+    for _ in range(N_BOOT):
+        v = fn(rng.integers(0, n, n))
+        if v is not None and not np.isnan(v):
+            vals.append(v)
+    if not vals:
+        return [0.0, 0.0]
+    return [float(np.percentile(vals, 2.5)), float(np.percentile(vals, 97.5))]
+
+
+def with_intervals(y: np.ndarray, flag: np.ndarray, rng) -> dict:
+    out = rates(y, flag)
+    out["sensitivity_ci"] = interval(lambda i: (y[i] & flag[i]).sum() / max(y[i].sum(), 1), len(y), rng)
+    out["ppv_ci"] = interval(lambda i: (y[i] & flag[i]).sum() / max(flag[i].sum(), 1), len(y), rng)
+    return out
 
 
 def age_band(a: float) -> str:
@@ -65,57 +119,102 @@ def age_band(a: float) -> str:
     return "60 and over"
 
 
+def cross_validate(X: pd.DataFrame, y: np.ndarray, groups: np.ndarray, cols: list[str]):
+    """Outer folds give honest raw scores. Inner folds give the calibrator its training data."""
+    raw, cal, fold_of = np.zeros(len(X)), np.zeros(len(X)), np.zeros(len(X), dtype=int)
+    contrib = np.zeros((len(X), len(cols) + 1))
+    for fold, (tr, te) in enumerate(GroupKFold(n_splits=5).split(X, y, groups)):
+        Xtr, ytr = X.iloc[tr][cols], y[tr]
+        inner = np.zeros(len(tr))
+        for itr, ite in GroupKFold(n_splits=3).split(Xtr, ytr, groups[tr]):
+            inner[ite] = model().fit(Xtr.iloc[itr], ytr[itr]).predict_proba(Xtr.iloc[ite])[:, 1]
+        iso = IsotonicRegression(y_min=0, y_max=1, out_of_bounds="clip").fit(inner, ytr)
+        m = model().fit(Xtr, ytr)
+        raw[te] = m.predict_proba(X.iloc[te][cols])[:, 1]
+        cal[te] = iso.predict(raw[te])
+        contrib[te] = m.booster_.predict(X.iloc[te][cols].to_numpy(), pred_contrib=True)
+        fold_of[te] = fold
+    return raw, cal, contrib, fold_of
+
+
 def main():
+    rng = np.random.default_rng(SEED)
     con = sqlite3.connect(DB_PATH)
     X = features.build(con)
     truth = pd.read_sql("SELECT person_id, fh FROM truth", con).set_index("person_id")["fh"]
     y = (np.asarray(X.index.map(truth)) > 0).astype(int)
     groups = X["clan_id"].to_numpy()
-    print(f"{len(X)} people with at least one lipid panel, {y.sum()} with FH (synthetic)")
+    n = len(X)
+    print(f"{n} people with at least one lipid panel, {y.sum()} with FH (synthetic)")
 
-    oof = {"A": np.zeros(len(X)), "B": np.zeros(len(X))}
-    contrib_b = np.zeros((len(X), len(features.FEATURES_B) + 1))
-    for fold, (tr, te) in enumerate(GroupKFold(n_splits=5).split(X, y, groups)):
-        for name, cols in (("A", features.FEATURES_A), ("B", features.FEATURES_B)):
-            m = model().fit(X.iloc[tr][cols], y[tr])
-            oof[name][te] = m.predict_proba(X.iloc[te][cols])[:, 1]
-            if name == "B":
-                contrib_b[te] = m.booster_.predict(X.iloc[te][cols].to_numpy(), pred_contrib=True)
-        print(f"fold {fold + 1} done")
+    raw_own, _, _, _ = cross_validate(X, y, groups, features.FEATURES_A)
+    print("own-record model done")
+    raw, cal, contrib, fold_of = cross_validate(X, y, groups, features.FEATURES_B)
+    print("linked-family model done")
 
-    # DLCN, classic version with recorded family history only.
     d = [dlcn_for(r) for _, r in X.iterrows()]
-    dl_total = np.array([x["total"] for x in d])
+    d_linked = [dlcn_for(r, linked=True) for _, r in X.iterrows()]
+    dl = np.array([x["total"] for x in d])
+    dl_linked = np.array([x["total"] for x in d_linked])
+    score_of = {"dlcn": dl.astype(float), "dlcn_linked": dl_linked.astype(float), "own": raw_own, "linked": raw}
 
     metrics = {}
-    for name, s in (("DLCN", dl_total.astype(float)), ("Model A", oof["A"]), ("Model B", oof["B"])):
-        metrics[name] = {"auroc": float(roc_auc_score(y, s)), "auprc": float(average_precision_score(y, s))}
+    for key, s in score_of.items():
+        folds = [float(roc_auc_score(y[fold_of == f], s[fold_of == f])) for f in range(5)]
+        metrics[key] = {
+            "name": METHODS[key],
+            "auroc": float(roc_auc_score(y, s)), "auprc": float(average_precision_score(y, s)),
+            "auroc_ci": interval(lambda i: roc_auc_score(y[i], s[i]) if 0 < y[i].sum() < len(i) else None, n, rng),
+            "auprc_ci": interval(lambda i: average_precision_score(y[i], s[i]) if y[i].sum() else None, n, rng),
+            "auroc_folds": [min(folds), max(folds)],
+        }
+        print(key, round(metrics[key]["auroc"], 3), round(metrics[key]["auprc"], 3))
 
-    k = int((dl_total >= 6).sum())
-    matched = {
-        "flag_count": k,
-        "note": "Each method flags the same number of people as DLCN 6 or higher.",
-        "DLCN": at_threshold(y, dl_total >= 6),
-        "Model A": at_k(y, oof["A"], k),
-        "Model B": at_k(y, oof["B"], k),
-    }
+    # Same workload for every method: as many people as DLCN 6 or more flags.
+    k = int((dl >= 6).sum())
+    matched = {"flag_count": k, "methods": {
+        "dlcn": {"name": METHODS["dlcn"], **with_intervals(y, dl >= 6, rng)},
+        **{key: {"name": METHODS[key], **with_intervals(y, top_k(score_of[key], k), rng)}
+           for key in ("dlcn_linked", "own", "linked")}}}
 
     thresholds = []
     for t in (0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.7):
-        r = at_threshold(y, oof["B"] >= t)
-        thresholds.append({"threshold": t, **r})
+        thresholds.append({"threshold": t, **rates(y, raw >= t)})
     ok = [r for r in thresholds if r["sensitivity"] >= TARGET_SENS]
     chosen = max(ok, key=lambda r: r["threshold"]) if ok else thresholds[0]
     threshold = chosen["threshold"]
-    flagged = oof["B"] >= threshold
+    flagged = raw >= threshold
+
+    bands = np.array([band_for(bool(f), float(c)) for f, c in zip(flagged, cal)])
+    band_table = []
+    for name in [b[0] for b in BANDS] + [NOT_FLAGGED]:
+        m = bands == name
+        band_table.append({"band": name, "people": int(m.sum()), "with_fh": int(y[m].sum()),
+                           "observed_rate": float(y[m].mean()) if m.any() else 0.0})
+
+    edges = [0, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0001]
+    curve = []
+    for lo, hi in zip(edges, edges[1:]):
+        m = (cal >= lo) & (cal < hi)
+        if m.sum():
+            curve.append({"from": lo, "to": min(hi, 1.0), "people": int(m.sum()), "predicted": float(cal[m].mean()),
+                          "observed": float(y[m].mean())})
+    calibration = {"method": "Isotonic regression fitted inside each training fold",
+                   "brier_raw": float(brier_score_loss(y, raw)), "brier_calibrated": float(brier_score_loss(y, cal)),
+                   "curve": curve}
 
     def fair(col: pd.Series) -> list[dict]:
         rows = []
         for g in sorted(col.unique()):
             m = (col == g).to_numpy()
-            yb = y[m]
-            rows.append({"group": g, "people": int(m.sum()), "with_fh": int(yb.sum()),
-                         "model_b": at_threshold(yb, flagged[m]), "dlcn6": at_threshold(yb, dl_total[m] >= 6)})
+            yb, fb = y[m], flagged[m]
+            pos = int(yb.sum())
+            rows.append({
+                "group": g, "people": int(m.sum()), "with_fh": pos, "small": pos < SMALL_GROUP,
+                "sensitivity": rates(yb, fb)["sensitivity"], "ppv": rates(yb, fb)["ppv"],
+                "sensitivity_ci": interval(lambda i: (yb[i] & fb[i]).sum() / yb[i].sum() if yb[i].sum() else None,
+                                           len(yb), rng),
+                "dlcn_sensitivity": rates(yb, dl[m] >= 6)["sensitivity"]})
         return rows
 
     fairness = {
@@ -124,61 +223,97 @@ def main():
         "Age band": fair(X["age"].map(age_band)),
     }
 
+    # Where it misses: people with FH below the cut-off.
+    miss = (y == 1) & ~flagged
+    found = (y == 1) & flagged
+
+    def share(mask, cond):
+        return float(cond[mask].mean()) if mask.any() else 0.0
+
+    conds = {
+        "On a statin": (X["statin_ever"] == 1).to_numpy(),
+        "Only one cholesterol result": (X["n_panels"] == 1).to_numpy(),
+        "No relatives in the system": (X["rel_n"] == 0).to_numpy(),
+        "Highest LDL below 4.9 mmol/L after statin correction": (X["max_ldl_corr"] < 4.9).to_numpy(),
+    }
+    misses = {"missed": int(miss.sum()), "found": int(found.sum()),
+              "rows": [{"what": k_, "among_missed": share(miss, c), "among_found": share(found, c)}
+                       for k_, c in conds.items()]}
+
     n_people = pd.read_sql("SELECT COUNT(*) n FROM people", con)["n"][0]
-    n_fh_all = int((truth > 0).sum())
     evaluation = {
         "synthetic": True,
         "label": "On synthetic data",
-        "population": {"people": int(n_people), "with_labs": int(len(X)), "with_fh_with_labs": int(y.sum()),
-                       "with_fh_total": n_fh_all},
+        "model_version": MODEL_VERSION,
+        "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "population": {"people": int(n_people), "with_labs": int(n), "with_fh_with_labs": int(y.sum()),
+                       "with_fh_total": int((truth > 0).sum())},
+        "methods": METHODS,
         "metrics": metrics,
         "matched_workload": matched,
         "thresholds": thresholds,
-        "worklist_threshold": {"threshold": threshold, **chosen,
-                               "why": f"Highest model B cut-off that still finds at least {int(TARGET_SENS * 100)}% "
-                                      "of people with FH among those with lipid results."},
+        "worklist_threshold": {"threshold": threshold, **with_intervals(y, flagged, rng),
+                               "why": f"Highest cut-off that still finds at least {int(TARGET_SENS * 100)}% of people "
+                                      "with FH among those with a cholesterol result."},
+        "bands": band_table,
+        "calibration": calibration,
         "fairness": fairness,
+        "misses": misses,
+        "published": PUBLISHED,
         "model_card": {
             "intended_use": "Flag adults and children with routine lipid results who may have familial "
                             "hypercholesterolaemia, for review by a clinician. It does not diagnose. A clinician "
                             "reviews every flag, and a genetic or clinical test confirms it.",
             "data": "A synthetic population of about 80,000 people shaped like Abu Dhabi: multi-generation Emirati "
                     "families, expatriate households and single workers. No real patient data was used.",
-            "features": {"Model A": features.FEATURES_A, "Model B": features.FEATURES_B},
-            "family_data_governance": "Model B reads linked relatives' records. In production the family book could "
-                                      "supply these links, but using a relative's data to score someone else needs "
-                                      "a legal basis, governance approval and clear patient information first.",
+            "features": {"own": features.FEATURES_A, "linked": features.FEATURES_B},
+            "family_data_governance": "The linked-family model reads relatives' records. In production the family "
+                                      "book could supply these links, but using a relative's data to score someone "
+                                      "else needs a legal basis, governance approval and clear patient information.",
             "validation": "Five-fold cross-validation grouped by extended family, so relatives never sit on both "
-                          "sides of a split. Scores shown in the app are out-of-fold.",
+                          "sides of a split. Scores are calibrated inside the folds. Intervals are 95% bootstrap "
+                          f"intervals over {N_BOOT} resamples.",
             "limits": [
-                "Synthetic data only. Performance on real records will differ and must be measured before any use.",
+                "Synthetic data only. Real-world accuracy will be lower; published models report a PPV of 1% to 15%.",
+                "The synthetic world has few people with high cholesterol from other causes, which flatters every "
+                "method here.",
+                "Family links are complete in this synthetic world; real links will be patchier.",
                 "People with no lipid results cannot be flagged at all.",
                 "Statin correction uses standard factors and does not know about adherence.",
-                "Family links are complete in this synthetic world; real links will be patchier.",
-                "Recorded family history is sparse, which is realistic but makes DLCN look weaker.",
+                "The claim to test on real data is the relative one: linked family records beat one record alone.",
             ],
         },
     }
     EVAL_PATH.write_text(json.dumps(evaluation, indent=2))
 
-    # Final model on all data, for live scoring of new results.
+    # Final model on all data, with a calibrator fitted on the out-of-fold scores, for live scoring.
     final = model().fit(X[features.FEATURES_B], y)
-    joblib.dump({"model": final, "features": features.FEATURES_B, "threshold": threshold}, MODEL_PATH)
+    calibrator = IsotonicRegression(y_min=0, y_max=1, out_of_bounds="clip").fit(raw, y)
+    joblib.dump({"model": final, "features": features.FEATURES_B, "threshold": threshold, "calibrator": calibrator,
+                 "version": MODEL_VERSION}, MODEL_PATH)
 
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     rows = []
     for i, (pid, r) in enumerate(X.iterrows()):
-        reasons = features.top_reasons(r, contrib_b[i], features.FEATURES_B)
-        rows.append((int(pid), d[i]["total"], d[i]["band"], json.dumps(d[i]["items"]), float(oof["A"][i]),
-                     float(oof["B"][i]), json.dumps(reasons), int(flagged[i])))
+        reasons = features.top_reasons(r, contrib[i], features.FEATURES_B)
+        rows.append((int(pid), d[i]["total"], d[i]["band"], json.dumps(d[i]["items"]), int(dl_linked[i]),
+                     float(raw_own[i]), float(raw[i]), float(cal[i]), bands[i], json.dumps(reasons),
+                     int(flagged[i]), MODEL_VERSION, now))
     con.execute("DROP TABLE IF EXISTS scores")
-    con.execute("CREATE TABLE scores (person_id INTEGER PRIMARY KEY, dlcn_total INTEGER, dlcn_band TEXT, "
-                "dlcn_items TEXT, prob_a REAL, prob_b REAL, reasons TEXT, flagged INTEGER)")
-    con.executemany("INSERT INTO scores VALUES (?,?,?,?,?,?,?,?)", rows)
+    con.execute(SCORES_SCHEMA)
+    con.executemany(f"INSERT INTO scores VALUES ({','.join('?' * 13)})", rows)
     con.commit()
     con.close()
 
-    print(json.dumps({"metrics": metrics, "matched_workload": matched,
-                      "worklist_threshold": evaluation["worklist_threshold"]}, indent=2))
+    print(json.dumps({"matched": {k_: (v["found"], round(v["ppv"], 2)) for k_, v in matched["methods"].items()},
+                      "threshold": evaluation["worklist_threshold"], "bands": band_table,
+                      "brier": [calibration["brier_raw"], calibration["brier_calibrated"]]}, indent=1))
+
+
+SCORES_SCHEMA = (
+    "CREATE TABLE scores (person_id INTEGER PRIMARY KEY, dlcn_total INTEGER, dlcn_band TEXT, dlcn_items TEXT, "
+    "dlcn_linked_total INTEGER, prob_a REAL, prob_b REAL, prob_cal REAL, band TEXT, reasons TEXT, flagged INTEGER, "
+    "model_version TEXT, scored_at TEXT)")
 
 
 if __name__ == "__main__":

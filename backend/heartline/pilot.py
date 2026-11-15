@@ -12,7 +12,9 @@ import sqlite3
 from collections import defaultdict
 from datetime import date
 
-from .cascade import BOOK_RATE, CONSENT_RATE, DETECTION_SENSITIVITY, WELLCHILD_RATE
+from functools import lru_cache
+
+from .simulate import BOOK_RATE, CONSENT_RATE, DETECTION_SENSITIVITY, WELLCHILD_RATE
 from .config import DB_PATH, LDL_P95_ADULT, LDL_P95_CHILD, REF_DATE, SEED
 
 WEEKS = 52
@@ -22,26 +24,43 @@ RESPOND_WEEKS = 2    # invitation to test
 WELLCHILD_RETRY = 13
 
 
-def _roll(*key) -> float:
-    return random.Random(f"{SEED}:pilot:" + ":".join(map(str, key))).random()
+# Published cascade-testing results, shown beside the projection (Lee et al. 2019, a review of ten studies).
+BENCHMARKS = {
+    "source": "Lee et al., Circulation: Genomic and Precision Medicine 2019. Ten cascade testing studies.",
+    "new_cases_per_index": [
+        {"label": "First-degree relatives only", "value": 0.80},
+        {"label": "Average across studies", "value": 1.65},
+        {"label": "Programme contacts relatives directly", "value": 2.06},
+        {"label": "Second- and third-degree relatives included", "value": 3.65},
+    ],
+    "yield_in_tested_relatives": 0.448,
+}
 
 
-def run(path=None, reviews_per_week: int = REVIEWS_PER_WEEK) -> dict:
-    con = sqlite3.connect(path or DB_PATH)
+@lru_cache(maxsize=2)
+def _load(path: str):
+    con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
-    people = {r["id"]: r for r in con.execute(
+    people = {r["id"]: dict(r) for r in con.execute(
         "SELECT id, birth_date, death_date, mother_id, father_id, relatives_abroad FROM people")}
     truth = {r[0]: (r[1], r[2], r[3]) for r in con.execute("SELECT person_id, fh, variant, true_ldl FROM truth")}
-    scores = list(con.execute("SELECT person_id, dlcn_total, flagged, prob_b FROM scores WHERE flagged=1 "
-                              "AND prob_a IS NOT NULL ORDER BY prob_b DESC"))
+    scores = [dict(r) for r in con.execute("SELECT person_id, dlcn_total, flagged, prob_b FROM scores WHERE flagged=1 "
+                                           "AND prob_a IS NOT NULL ORDER BY prob_b DESC")]
     screened = con.execute("SELECT COUNT(*) FROM scores WHERE prob_a IS NOT NULL").fetchone()[0]
     con.close()
-
     kids = defaultdict(list)
     for p in people.values():
         for par in (p["mother_id"], p["father_id"]):
             if par:
                 kids[par].append(p["id"])
+    return people, truth, scores, screened, kids
+
+
+def _once(path: str, reviews_per_week: int, consent_rate: float, uptake: float, seed: int) -> dict:
+    people, truth, scores, screened, kids = _load(path)
+
+    def _roll(*key) -> float:
+        return random.Random(f"{SEED}:pilot:{seed}:" + ":".join(map(str, key))).random()
 
     def age_at(pid, week):
         d = REF_DATE.toordinal() + week * 7
@@ -73,7 +92,7 @@ def run(path=None, reviews_per_week: int = REVIEWS_PER_WEEK) -> dict:
     def confirm(pid, w, variant, source):
         m = months[month(w)]
         m[{"detection": "confirmed_detection", "cascade": "relatives_positive", "wellchild": "children_positive"}[source]] += 1
-        if source != "wellchild" and _roll(pid, "consent") < CONSENT_RATE:
+        if source != "wellchild" and _roll(pid, "consent") < consent_rate:
             events[w + 1].append(("cascade", (pid, variant)))
 
     for w in range(WEEKS):
@@ -110,7 +129,7 @@ def run(path=None, reviews_per_week: int = REVIEWS_PER_WEEK) -> dict:
                             events[due].append(("wellchild", (r, variant, 0)))
                     else:
                         m["invited"] += 1
-                        if _roll(r, "book") < BOOK_RATE:
+                        if _roll(r, "book") < uptake:
                             events[w + RESPOND_WEEKS].append(("test", (r, variant)))
             elif kind == "test":
                 r, variant = payload
@@ -141,7 +160,7 @@ def run(path=None, reviews_per_week: int = REVIEWS_PER_WEEK) -> dict:
         "label": "Projection on synthetic data",
         "assumptions": {
             "weeks": WEEKS, "reviews_per_week": reviews_per_week, "detection_test_sensitivity": DETECTION_SENSITIVITY,
-            "consent_rate": CONSENT_RATE, "relative_uptake": BOOK_RATE, "wellchild_uptake": WELLCHILD_RATE,
+            "consent_rate": consent_rate, "relative_uptake": uptake, "wellchild_uptake": WELLCHILD_RATE,
             "test_turnaround_weeks": TEST_WEEKS,
         },
         "totals": {
@@ -150,10 +169,26 @@ def run(path=None, reviews_per_week: int = REVIEWS_PER_WEEK) -> dict:
             "found_detection_only": tot["confirmed_detection"],
             "found_with_cascade": found,
             "people_per_detection_case": found / tot["confirmed_detection"] if tot["confirmed_detection"] else 0.0,
+            "new_cases_per_index": (found - tot["confirmed_detection"]) / tot["confirmed_detection"]
+            if tot["confirmed_detection"] else 0.0,
             "relatives_abroad_reached_by_letter": abroad,
         },
         "series": series,
     }
+
+
+def run(path=None, reviews_per_week: int = REVIEWS_PER_WEEK, consent_rate: float = CONSENT_RATE,
+        uptake: float = BOOK_RATE, seeds: int = 5) -> dict:
+    """The projection for one set of assumptions, with the spread across several random seeds."""
+    path = str(path or DB_PATH)
+    runs = [_once(path, int(reviews_per_week), float(consent_rate), float(uptake), s) for s in range(seeds)]
+    out = runs[0]
+    for key in ("found_with_cascade", "found_detection_only", "new_cases_per_index"):
+        vals = [r["totals"][key] for r in runs]
+        out["totals"][f"{key}_range"] = [min(vals), max(vals)]
+    out["runs"] = seeds
+    out["benchmarks"] = BENCHMARKS
+    return out
 
 
 if __name__ == "__main__":

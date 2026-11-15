@@ -171,20 +171,47 @@ def reason_text(feature: str, v) -> str | None:
 OWN_LDL = ("max_ldl_corr", "latest_ldl_corr", "max_ldl_raw")
 
 
-def top_reasons(row: pd.Series, contrib: np.ndarray, features: list[str], k: int = 3) -> list[str]:
-    order = np.argsort(-contrib[: len(features)])
-    out = []
-    own_ldl = False  # the three own-LDL features say much the same thing; keep one
-    for i in order:
-        if contrib[i] <= 0:
-            break
-        if features[i] in OWN_LDL:
-            if own_ldl:
-                continue
-            own_ldl = True
-        t = reason_text(features[i], row[features[i]])
-        if t and t not in out:
-            out.append(t)
-        if len(out) == k:
-            break
+def against_text(feature: str, v) -> str | None:
+    """Sentence for something in the record that lowers the score. Missing data is never
+    turned into evidence against: unknown is not the same as no."""
+    missing = v is None or (isinstance(v, float) and np.isnan(v))
+    if feature == "rel_max_ldl_corr":
+        return None if missing or v >= 4.9 else f"Highest LDL among close relatives is {v:.1f} mmol/L"
+    if missing:
+        return None
+    if feature in ("max_ldl_corr", "latest_ldl_corr") and v < 4.9:
+        which = "Highest" if feature == "max_ldl_corr" else "Latest"
+        return f"{which} LDL is {v:.1f} mmol/L, below the usual range for FH"
+    if feature == "rel_n_high_ldl" and v == 0:
+        return "No close relative with very high LDL on record"
+    if feature == "n_panels" and v >= 3:
+        return f"{int(v)} cholesterol results on record, so the picture is fairly complete"
+    if feature == "age" and v >= 60:
+        return "No early heart disease by this age"
+    return None
+
+
+def top_reasons(row: pd.Series, contrib: np.ndarray, features: list[str], k: int = 3, k_against: int = 2) -> list[dict]:
+    """Signed reasons from SHAP contributions: up to k for the flag and k_against against it."""
+    c = contrib[: len(features)]
+    out: list[dict] = []
+    for direction, order, limit, text in (("for", np.argsort(-c), k, reason_text),
+                                          ("against", np.argsort(c), k_against, against_text)):
+        n, own_ldl = 0, False  # the three own-LDL features say much the same thing; keep one
+        for i in order:
+            if (direction == "for" and c[i] <= 0) or (direction == "against" and c[i] >= 0) or n == limit:
+                break
+            f = features[i]
+            if f in OWN_LDL:
+                if own_ldl:
+                    continue
+                own_ldl = True
+            t = text(f, row[f])
+            if t and all(t != r["text"] for r in out):
+                out.append({"text": t, "direction": direction, "weight": round(float(abs(c[i])), 3), "feature": f})
+                n += 1
     return out
+
+
+def reason_texts(reasons: list, direction: str = "for") -> list[str]:
+    return [r["text"] for r in reasons if isinstance(r, dict) and r["direction"] == direction]

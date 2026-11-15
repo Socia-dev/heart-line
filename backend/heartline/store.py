@@ -10,13 +10,13 @@ from .config import DB_PATH, REF_DATE
 DEMO_SCHEMA = """
 CREATE TABLE IF NOT EXISTS sim (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS cases (
-  id INTEGER PRIMARY KEY, person_id INTEGER UNIQUE, source TEXT, index_of INTEGER, status TEXT,
-  created_at TEXT, updated_at TEXT, test_due TEXT, found_variant TEXT,
-  consent INTEGER, consent_by TEXT, consent_at TEXT, cascade_at TEXT
+  id INTEGER PRIMARY KEY, person_id INTEGER UNIQUE, source TEXT, index_of INTEGER, family_root INTEGER, status TEXT,
+  prev_status TEXT, dismiss_reason TEXT, created_at TEXT, updated_at TEXT, test_due TEXT, found_variant TEXT,
+  consent INTEGER, consent_by TEXT, consent_at TEXT, consent_excluded TEXT, cascade_at TEXT
 );
 CREATE TABLE IF NOT EXISTS invitations (
   id INTEGER PRIMARY KEY, token TEXT UNIQUE, person_id INTEGER UNIQUE, case_id INTEGER, lang TEXT, status TEXT,
-  sent_at TEXT, slot TEXT, booked_at TEXT, tested_at TEXT
+  sent_at TEXT, expires_at TEXT, slot TEXT, booked_at TEXT, tested_at TEXT, responded_at TEXT, share_result INTEGER
 );
 CREATE TABLE IF NOT EXISTS wellchild (
   id INTEGER PRIMARY KEY, person_id INTEGER UNIQUE, case_id INTEGER, flagged_at TEXT, due_date TEXT, status TEXT,
@@ -24,12 +24,17 @@ CREATE TABLE IF NOT EXISTS wellchild (
 );
 CREATE TABLE IF NOT EXISTS family_letters (id INTEGER PRIMARY KEY, case_id INTEGER, relatives_abroad INTEGER,
   created_at TEXT);
+-- One row per thing that happened. Append-only: the triggers below refuse edits and deletes.
 CREATE TABLE IF NOT EXISTS audit (
-  id INTEGER PRIMARY KEY, sim_date TEXT, logged_at TEXT, actor TEXT, action TEXT, subject TEXT, person_id INTEGER,
-  detail TEXT
+  id INTEGER PRIMARY KEY, sim_date TEXT, logged_at TEXT, actor TEXT, actor_role TEXT, action_key TEXT, action TEXT,
+  case_id INTEGER, person_id INTEGER, from_status TEXT, to_status TEXT, detail TEXT
 );
 CREATE INDEX IF NOT EXISTS audit_person ON audit(person_id);
 CREATE INDEX IF NOT EXISTS cases_status ON cases(status);
+CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit
+  BEGIN SELECT RAISE(ABORT, 'audit rows cannot be changed'); END;
+CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit
+  BEGIN SELECT RAISE(ABORT, 'audit rows cannot be deleted'); END;
 """
 
 DEMO_TABLES = ("cases", "invitations", "wellchild", "family_letters", "audit", "sim")
@@ -99,9 +104,15 @@ def full_name(p) -> str:
 
 # ------------------------------------------------------------------ audit
 
-def audit(con, actor: str, action: str, subject: str, person_id: int | None = None, detail: dict | str | None = None):
-    if isinstance(detail, dict):
-        detail = json.dumps(detail)
-    con.execute("INSERT INTO audit (sim_date, logged_at, actor, action, subject, person_id, detail) VALUES (?,?,?,?,?,?,?)",
-                (today(con).isoformat(), datetime.now(timezone.utc).isoformat(timespec="seconds"), actor, action, subject,
-                 person_id, detail))
+def audit(con, role: str, key: str, action: str, *, case_id: int | None = None, person_id: int | None = None,
+          from_status: str | None = None, to_status: str | None = None, detail: dict | None = None,
+          actor: str | None = None):
+    """Write one audit row. `role` is who acted (a staff role, lab, system, relative or demo)."""
+    from .machine import ACTOR_NAME
+    clean = {k: v for k, v in (detail or {}).items() if v not in (None, "", [])}
+    con.execute(
+        "INSERT INTO audit (sim_date, logged_at, actor, actor_role, action_key, action, case_id, person_id, "
+        "from_status, to_status, detail) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (today(con).isoformat(), datetime.now(timezone.utc).isoformat(timespec="seconds"),
+         actor or ACTOR_NAME.get(role, role.capitalize()), role, key, action, case_id, person_id, from_status,
+         to_status, json.dumps(clean) if clean else None))
