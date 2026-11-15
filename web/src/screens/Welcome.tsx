@@ -14,6 +14,9 @@ export default function Welcome({ start, busy, free }: { start: () => void; busy
           <button className="primary" disabled={busy} onClick={start}>
             {busy ? "Starting" : "Start the guided demo"}
           </button>
+          <a className="btn" href="#/try">
+            Try your own numbers
+          </a>
           <button onClick={free}>Explore on my own</button>
           <span className="small muted">About 3 minutes. It tells you who you are and what to press at each step.</span>
         </div>

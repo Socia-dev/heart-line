@@ -2,7 +2,9 @@ import { Component, ReactNode, useEffect, useState } from "react";
 import { ROLES, Role, changed, useApi, useRole } from "./api";
 import DemoBar from "./components/DemoBar";
 import Guide, { GuideState, startDemo } from "./components/Guide";
+import PipelineOverlay from "./components/Pipeline";
 import TimeWarp from "./components/TimeWarp";
+import Try from "./screens/Try";
 import About from "./screens/About";
 import Audit from "./screens/Audit";
 import Children from "./screens/Children";
@@ -118,6 +120,7 @@ export default function App() {
   else if (section === "patient") screen = <Patient id={Number(arg)} />;
   else if (section === "invite") screen = <InvitePreview token={arg} />;
   else if (section === "about") screen = <About />;
+  else if (section === "try") screen = <Try />;
   else if (section === "model") screen = <Model />;
   else if (section === "families" && role === "coordinator") screen = <Families />;
   else if (section === "children" && role === "coordinator") screen = <Children />;
@@ -126,7 +129,7 @@ export default function App() {
   else if (role === "lead") screen = <Programme />;
   else screen = <Home />;
 
-  const active = ["families", "children", "model", "audit"].includes(section ?? "") ? section : section === "about" ? "none" : "";
+  const active = ["families", "children", "model", "audit"].includes(section ?? "") ? section : section === "about" || section === "try" ? "none" : "";
   const me = ROLES.find((r) => r.id === role)!;
   return (
     <Boundary>
@@ -148,6 +151,9 @@ export default function App() {
                   {label}
                 </a>
               ))}
+            <a href="#/try" className={section === "try" ? "on" : ""}>
+              Try your own numbers
+            </a>
             <a href="#/about" className={section === "about" ? "on" : ""}>
               How it works
             </a>
@@ -166,6 +172,7 @@ export default function App() {
         </div>
       </main>
       <TimeWarp />
+      <PipelineOverlay />
     </Boundary>
   );
 }

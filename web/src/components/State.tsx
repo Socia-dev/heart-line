@@ -16,6 +16,7 @@ const COPY: Record<string, { title: string; help: string }> = {
 };
 
 export function describe(e: ApiError) {
+  if (e.code?.startsWith("bad_") || e.kind === "validation") return COPY[e.code] ?? { title: "Check this value", help: e.message };
   return COPY[e.code] ?? { title: "That didn't work", help: e.message };
 }
 

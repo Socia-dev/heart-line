@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ApiError, ROLES, Role, changed, fmtDate, go, post, setRole, useApi, useRole } from "../api";
 import { describe } from "./State";
+import { startDemo } from "./Guide";
 import { advanceTwoWeeks } from "./TimeWarp";
 
 type Summary = { today: string };
@@ -50,10 +51,8 @@ export default function DemoBar({ onGuide }: { onGuide: () => void }) {
           disabled={busy}
           onClick={() =>
             run(async () => {
-              const r = await post<{ person_id: number }>("/api/simulate/new-result");
-              setMsg("A new cholesterol result arrived and was flagged.");
-              setRole("clinician");
-              go(`#/patient/${r.person_id}`);
+              await startDemo();
+              setMsg(null);
             })
           }
         >

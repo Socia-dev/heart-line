@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ApiError, ROLES, Role, changed, fmtDate, go, post, setRole, useRole } from "../api";
 import { reduced } from "../motion";
 import { describe } from "./State";
+import { Stage, playPipeline } from "./Pipeline";
 import { advanceTwoWeeks } from "./TimeWarp";
 
 export type GuideState = {
@@ -206,7 +207,13 @@ export default function Guide({ g, final, setFinal, onFree }: { g: GuideState; f
 export const roleName = (r: Role) => ROLES.find((x) => x.id === r)!;
 
 export async function startDemo() {
-  const r = await post<{ person_id: number }>("/api/simulate/new-result");
-  setRole("clinician");
-  go(`#/patient/${r.person_id}`);
+  const r = await post<{ person_id: number; stages: Stage[] }>("/api/simulate/new-result");
+  await new Promise<void>((done) =>
+    playPipeline(r.stages, () => {
+      setRole("clinician");
+      go(`#/patient/${r.person_id}`);
+      changed();
+      done();
+    }),
+  );
 }
