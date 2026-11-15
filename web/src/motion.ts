@@ -29,9 +29,18 @@ export function useCountUp(value: number, ms = 700): number {
       else from.current = value;
     };
     raf = requestAnimationFrame(tick);
-    return () => {
+    // If animation frames are paused (a background tab), still land on the right number.
+    const settle = window.setTimeout(() => {
       cancelAnimationFrame(raf);
       from.current = value;
+      setShown(value);
+    }, ms + 80);
+    return () => {
+      // Interrupted by a newer value: finish this one at once, and count on from here.
+      cancelAnimationFrame(raf);
+      window.clearTimeout(settle);
+      from.current = value;
+      setShown(value);
     };
   }, [value, ms]);
   return shown;

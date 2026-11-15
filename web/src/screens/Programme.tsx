@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api";
 import LineChart from "../components/LineChart";
+import Playback from "../components/Playback";
 import { LoadError, Loading } from "../components/State";
 import { CountUp } from "../motion";
 
@@ -42,6 +43,16 @@ export default function Programme() {
         <h1>Programme</h1>
         <p className="lede">One blood test can find a whole family. This page shows whether that is happening, with no patient names.</p>
       </div>
+
+      {p.data && t && (
+        <section className="card">
+          <h2>Watch a year of the programme</h2>
+          <p className="muted">
+            The projection below, played one month a second. The settings further down change it. {p.data.label}.
+          </p>
+          <Playback series={p.data.series as never} screened={t.screened} />
+        </section>
+      )}
 
       <section className="card">
         <div className="spread">
