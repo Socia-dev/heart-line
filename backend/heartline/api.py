@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import cascade, features, fhir, live, machine, pilot, retrain, scoring, simulate, store, voice
+from . import cascade, features, fhir, live, machine, mailer, pilot, retrain, scoring, simulate, store, voice
 
 voice.load_env()
 from .config import EVAL_PATH, PREMATURE_AGE
@@ -562,6 +562,45 @@ def invite_view(token: str, con: sqlite3.Connection = Depends(db)):
     state = cascade.invitation_state(con, r)
     return {"given": store.person(con, r["person_id"])["given"], "lang": r["lang"], "state": state, "slot": r["slot"],
             "slots": _slots(store.today(con)) if state == "open" else [], "mock": True}
+
+
+@app.get("/api/email/status")
+def email_status():
+    return mailer.status()
+
+
+def _invitation(con, inv_id: int):
+    r = con.execute("SELECT * FROM invitations WHERE id=?", (inv_id,)).fetchone()
+    if r is None:
+        raise Refusal("not_found", "invitation_not_found", "Invitation not found.")
+    return r
+
+
+@app.get("/api/invitations/{inv_id}/email")
+def email_preview(inv_id: int, role: str = Depends(actor), con: sqlite3.Connection = Depends(db)):
+    """Exactly what would be sent. Nothing is sent by looking."""
+    allow(role, "coordinator")
+    mail = mailer.compose(_invitation(con, inv_id)["token"])
+    return {k: v for k, v in mail.items() if not k.startswith("_")} | {"status": mailer.status()}
+
+
+class EmailIn(BaseModel):
+    to: str
+
+
+@app.post("/api/invitations/{inv_id}/email")
+def email_send(inv_id: int, body: EmailIn, role: str = Depends(actor), con: sqlite3.Connection = Depends(db)):
+    """Send one invitation to an address typed in by the coordinator. The address is not stored."""
+    allow(role, "coordinator")
+    inv = _invitation(con, inv_id)
+    try:
+        out = mailer.send(body.to.strip(), inv["token"])
+    except mailer.MailUnavailable as e:
+        raise Refusal("business", "email_unavailable", str(e))
+    store.audit(con, role, "invitation_emailed", "Invitation sent by real email to an address typed in (demo)",
+                person_id=inv["person_id"], detail={"voice": f"{len(out['voice_notes'])} voice notes attached" if out["voice_notes"] else None})
+    con.commit()
+    return out
 
 
 @app.get("/api/voice/status")

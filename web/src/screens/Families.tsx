@@ -1,5 +1,7 @@
 import { Brief, fmtDate, useApi } from "../api";
+import { Fragment, useState } from "react";
 import ChainGraph from "../components/ChainGraph";
+import EmailInvite from "../components/EmailInvite";
 import Fold from "../components/Fold";
 import { Empty, LoadError, Loading } from "../components/State";
 
@@ -33,6 +35,7 @@ const INV: Record<string, string> = {
 // The coordinator's view of every invitation and how each family led to the next.
 export default function Families() {
   const { data, error, reload } = useApi<Data>("/api/invitations");
+  const [emailing, setEmailing] = useState<number | null>(null);
   if (error) return <LoadError error={error} retry={reload} />;
   if (!data) return <Loading />;
   const roots = data.families.filter((c) => c.index_of == null || !data.families.some((x) => x.case_id === c.index_of));
@@ -82,7 +85,8 @@ export default function Families() {
               </thead>
               <tbody>
                 {data.invitations.map((i) => (
-                  <tr key={i.id}>
+                  <Fragment key={i.id}>
+                  <tr>
                     <td>
                       <a href={`#/patient/${i.relative.id}`}>{i.relative.name}</a>
                       <div className="small muted">{fmtDate(i.sent_at)}</div>
@@ -99,8 +103,20 @@ export default function Families() {
                     </td>
                     <td>
                       <a href={`#/invite/${i.token}`}>See their page</a>
+                      <br />
+                      <button className="link small" style={{ margin: 0 }} onClick={() => setEmailing(emailing === i.id ? null : i.id)}>
+                        Email it to me
+                      </button>
                     </td>
                   </tr>
+                  {emailing === i.id && (
+                    <tr>
+                      <td colSpan={5}>
+                        <EmailInvite id={i.id} onClose={() => setEmailing(null)} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
