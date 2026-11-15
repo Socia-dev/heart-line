@@ -51,6 +51,20 @@ Nothing reaches a relative until a clinician has confirmed the case and the pati
 | `fhir.py` | Patient, RelatedPerson, Observation, RiskAssessment, Condition | No |
 | `api.py` | HTTP, role checks on views, redaction | No |
 
+## Endpoints added in phase 2
+
+| Endpoint | Who | What |
+| --- | --- | --- |
+| `POST /api/score` | anyone; with `person_id`, clinician or coordinator | Score typed-in numbers (own-record model) or a person with values changed (linked-family model). Returns each stage with its timing, the why-chart and DLCN. Stores nothing. |
+| `POST /api/score/csv`, `GET /api/score/sample.csv` | anyone | Score up to 500 rows; one bad row does not stop the others. Stores nothing. |
+| `GET /api/patients/{id}/explain` | clinician, coordinator | The why-chart for a person and the starting values for what-if. |
+| `GET /api/model/scatter` | lead, clinician | Highest corrected LDL against model score for everyone with a result, as arrays. No names, no ground truth. |
+| `GET/POST /api/model/retrain`, `POST /api/model/retrain/apply` | lead | Start a retrain (full, or a labelled quick run), watch its folds, and use the new model on a click. One run at a time. |
+| `GET /api/voice/status`, `GET /api/invite/{token}/voice?lang=` | anyone | Whether recorded voice is available (never the key), and the cached voice note. |
+| `GET /api/email/status`, `GET/POST /api/invitations/{id}/email` | coordinator | Preview, then send one invitation to a typed address. The address is not stored. |
+
+Training ignores lab results added live during a demo, so the model never learns from demo state. A full retrain writes to `data/candidate/` and a `scores_candidate` table until someone presses "Use the new model".
+
 ## Roles
 
 Demo roles, chosen in the bar and sent as a header. There is no sign-in in the prototype.

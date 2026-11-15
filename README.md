@@ -10,7 +10,9 @@ Familial hypercholesterolaemia (FH) is inherited high cholesterol. It causes ear
 
 - **All data is synthetic.** About 80,000 made-up people. No real patient data anywhere.
 - **Every accuracy number is on synthetic data** and is higher than a real deployment would see. The Model page shows published figures beside Heart Line's and says why. See `docs/limitations.md`.
-- **Messaging, lab results, bookings and Well-Child results are simulated.**
+- **Lab results, bookings and Well-Child results are simulated.** SMS is a preview, never sent.
+- **Two things can leave the app, and only if you set them up:** the voice invitation (ElevenLabs) and one invitation emailed to an address you type in. Neither carries a name or anything about a patient.
+- **The ML is real and runs live:** scoring, the why-chart, what-if and retraining all call the real models.
 - **There is no sign-in.** A role switch stands in for four members of staff.
 - **The FHIR export is a format, not an integration.**
 
@@ -43,6 +45,15 @@ docker build -t heartline .
 docker run -p 8010:8010 heartline
 ```
 
+### Optional: voice and email
+
+Copy `backend/.env.example` to `backend/.env` and fill in what you have. The file is git-ignored.
+
+- `ELEVENLABS_API_KEY`: the invitation can be played as a recorded voice note in Arabic or English. Voices are picked from your account unless `ELEVENLABS_VOICE_ID_AR` and `ELEVENLABS_VOICE_ID_EN` are set; the model defaults to `eleven_multilingual_v2`. Each clip is made once and cached in `backend/data/voice/`. Without a key, the phone page reads the same words with the browser's own voice and labels it "Device voice".
+- `RESEND_API_KEY` and `EMAIL_FROM` (or `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`): the coordinator can email one invitation to an address they type in, with the voice notes attached. `HEARTLINE_PUBLIC_URL` sets the base of the link in it.
+
+Restart the API after changing `.env`.
+
 Tests, from `backend/` after generate and train:
 
 ```bash
@@ -53,12 +64,14 @@ python -m unittest discover -s tests -t .
 
 Open the app and press **Start the guided demo**. A strip under the header then says who you are and what to press at each of eight steps, and rings the button. The steps below are what it walks you through. **Explore on my own** swaps the guide for a role switch and the raw demo controls.
 
-1. **As the clinician.** Press New lab result. A first cholesterol result arrives and is flagged. The patient page shows a band (Likely), the DLCN score beside it, and the reasons for and against. Order the genetic test.
+1. **As the clinician.** A first cholesterol result arrives. The scoring pipeline plays out stage by stage with real timings, then the patient opens: a band (Likely), a why-chart of what pushed the score up or down, and the DLCN score beside it. Try What if? to change LDL or age and watch it rescore. Order the genetic test.
 2. Press Advance two weeks. The variant is found. The page now gives the question to ask the patient and lists the relatives; untick anyone the patient does not want contacted. Press Patient agrees. The case is handed to the coordinator.
 3. **Switch to the family coordinator.** The family is under To start. The page shows every relative, the exact message each will get in their language, the children who go to Well-Child, and who is not contacted and why. Send.
-4. Under Invitations, open See their page for one relative. This is the relative's phone view, Arabic first. Book, decline, say you were already tested, or ask for a call.
+4. Open a relative's phone. Press Listen to hear the invitation spoken, then book, decline, say you were already tested, or ask for a call. Under Invitations, "Email it to me" sends the real invitation to your own address if email is set up.
 5. Advance two weeks. **Switch back to the clinician.** A relative found through the family is under Results back, waiting for their own clinician to ask about their family. The first patient's tree shows who replied, never a relative's result.
-6. **Switch to the programme lead.** Programme shows a year's projection with sliders and published programmes beside it. "Can we trust the flags?" shows the four-way comparison and why the numbers are too good. Audit shows every decision and who made it.
+6. **Switch to the programme lead.** Programme plays the year month by month. "Can we trust the flags?" has ROC curves, a scatter of all 35,000 people, the realism check against published figures, and a Retrain button that runs the real training with each fold appearing as it finishes. Audit shows every decision and who made it.
+
+Anyone can also open **Try your own numbers** to type in a result, or upload a CSV, and see exactly how it is scored.
 
 Reset clears the demo and keeps the population. Outcomes are seeded, so the story plays the same way each time.
 
@@ -68,6 +81,11 @@ Reset clears the demo and keeps the population. Outcomes are seeded, so the stor
 backend/heartline/
   generate.py   synthetic population with linked families
   features.py   features and signed reasons
+  live.py       scoring stage by stage with timings, the why-chart, what-if
+  retrain.py    retraining as a background job
+  reference.py  published figures for the realism check, with sources
+  voice.py      voice invitations through ElevenLabs, cached
+  mailer.py     optional real email of one invitation
   train.py      cross-validated models, calibration, comparison, fairness -> evaluation.json
   machine.py    the workflow as one transition table: roles, guards, next step
   cascade.py    applies decisions: cases, consent, invitations, audit
@@ -76,7 +94,7 @@ backend/heartline/
   fhir.py       FHIR R4 export
   api.py        HTTP, roles, redaction
 web/src/
-  screens/      Home (role queue), Patient, Families, Invite, Children, Programme, Model, Audit, About
+  screens/      Welcome, Home (role queue), Patient, Families, Invite, Children, Programme, Model, Audit, About, Try
   locale/       the relative's page in English and Arabic
 ```
 

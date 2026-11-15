@@ -54,5 +54,5 @@ The wording of the consent question, the invitation, the answer to "why am I get
 
 - SQLite and a single process. Fine for a demo.
 - 34 backend tests; no automated browser tests. The interface was checked by hand at desktop and phone widths.
-- One test run in about a dozen failed once and could not be reproduced. It is noted here until explained.
+- An intermittent privacy-test failure was traced to a random invitation link that happened to contain the letters "fh"; the test now checks the message text and not the random link.
 - The staff interface is English only.
