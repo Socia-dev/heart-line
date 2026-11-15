@@ -1462,3 +1462,34 @@ button.link.sort {
 tr[aria-selected="true"] td {
   background: var(--g-100);
 }
+
+/* Curves draw themselves in; the scatter's hover tip floats */
+@media (prefers-reduced-motion: no-preference) {
+  polyline.draw {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: draw-line 1100ms var(--ease-out) var(--d, 0ms) forwards;
+  }
+  circle.pop {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+}
+@keyframes draw-line {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.tip {
+  position: absolute;
+  pointer-events: none;
+  background: #fff;
+  border: 1px solid var(--g-300);
+  border-radius: var(--r);
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 18px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); /* it floats */
+  white-space: nowrap;
+  z-index: 2;
+}

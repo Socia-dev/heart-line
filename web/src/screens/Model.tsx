@@ -1,11 +1,13 @@
 import { pct, range, useApi } from "../api";
 import Fold from "../components/Fold";
+import { Curves, Population } from "../components/ModelCharts";
 import { LoadError, Loading } from "../components/State";
 
 type At = { name: string; flagged: number; found: number; sensitivity: number; ppv: number; sensitivity_ci: number[]; ppv_ci: number[] };
 type Metric = { name: string; auroc: number; auprc: number; auroc_ci: number[]; auprc_ci: number[] };
 type FairRow = { group: string; people: number; with_fh: number; small: boolean; sensitivity: number; sensitivity_ci: number[]; dlcn_sensitivity: number };
 type Evaluation = {
+  curves?: Record<string, { roc: number[][]; pr: number[][]; point: { fpr: number; tpr: number; precision: number } }>;
   model_version: string;
   population: { people: number; with_labs: number; with_fh_with_labs: number; with_fh_total: number };
   metrics: Record<string, Metric>;
@@ -60,6 +62,26 @@ export default function Model() {
           finds {m.own.found}. It is the model using relatives' records together that finds <strong>{m.linked.found}</strong>. That relative gain is the
           claim to test on real data.
         </p>
+      </section>
+
+      {e.curves && (
+        <section className="card">
+          <h2>Across every possible cut-off</h2>
+          <p className="muted">
+            Each line shows how a method trades finding more people against flagging more people who turn out not to have FH. Higher and further left is
+            better. On synthetic data.
+          </p>
+          <Curves curves={e.curves} k={e.matched_workload.flag_count} />
+        </section>
+      )}
+
+      <section className="card">
+        <h2>Everyone with a result</h2>
+        <p className="muted">
+          Each dot is one person. Across is their highest LDL, up is the model's score. People above the dashed line are on a clinician's worklist. Hover
+          for the rating; click to open the record.
+        </p>
+        <Population />
       </section>
 
       <section className="notice">

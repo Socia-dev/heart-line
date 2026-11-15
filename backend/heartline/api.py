@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import cascade, fhir, live, machine, pilot, simulate, store
+from . import cascade, features, fhir, live, machine, pilot, scoring, simulate, store
 from .config import EVAL_PATH, PREMATURE_AGE
 from .features import reason_texts
 from .machine import CONFIRMED, OPEN, Refusal
@@ -161,6 +161,39 @@ def summary(con: sqlite3.Connection = Depends(db)):
         "story": [{"step": a, "done": bool(b), "role": c} for a, b, c in story],
         "latest_live": live[0] if live else None,
     }
+
+
+@lru_cache(maxsize=2)
+def _ldl_by_person(db_key: str) -> dict:
+    """Highest statin-corrected LDL per person, from the recorded history. Cached: the history does not change."""
+    con = store.connect(schema=False)
+    try:
+        X = features.build(con, history_only=True)
+    finally:
+        con.close()
+    return {int(i): float(v) for i, v in X["max_ldl_corr"].items()}
+
+
+@app.get("/api/model/scatter")
+def scatter(role: str = Depends(actor), con: sqlite3.Connection = Depends(db)):
+    """Everyone with a result: highest corrected LDL against the model's score, with each person's band.
+    Arrays rather than objects, so 35,000 points stay small. No names, no ground truth."""
+    allow(role, "lead", "clinician")
+    ldl = _ldl_by_person(str(store.DB_PATH))
+    confirmed = {r[0] for r in con.execute("SELECT person_id FROM cases WHERE status IN ('confirmed_genetic','clinical_fh')")}
+    bands = [b[0] for b in scoring.BANDS] + [scoring.NOT_FLAGGED]
+    out = {"x": [], "y": [], "band": [], "found": [], "id": []}
+    for r in con.execute("SELECT person_id, prob_b, band FROM scores"):
+        x = ldl.get(r[0])
+        if x is None:
+            continue
+        out["x"].append(round(x, 2))
+        out["y"].append(round(float(r[1]), 4))
+        out["band"].append(bands.index(r[2]) if r[2] in bands else len(bands) - 1)
+        out["found"].append(int(r[0] in confirmed))
+        out["id"].append(r[0])
+    return {**out, "bands": bands, "threshold": _evaluation().get("worklist_threshold", {}).get("threshold"),
+            "label": "On synthetic data"}
 
 
 @app.get("/api/evaluation")
