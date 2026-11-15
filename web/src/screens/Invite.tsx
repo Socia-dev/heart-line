@@ -53,7 +53,9 @@ export default function Invite({ token }: { token: string }) {
           {lang === "ar" ? "English" : "العربية"}
         </button>
       </div>
-      {body}
+      <div className="phone-step" key={`${data?.state ?? "load"}-${step}`}>
+        {body}
+      </div>
       <p className="small muted" style={{ marginTop: 18, marginBottom: 0 }}>
         {t.mock}
       </p>
@@ -83,6 +85,10 @@ export default function Invite({ token }: { token: string }) {
     return shell(
       <>
         <p className="small muted step">{t.step.replace("{n}", "3")}</p>
+        <svg className="tick" viewBox="0 0 52 52" width="52" height="52" aria-hidden="true">
+          <circle cx="26" cy="26" r="24" />
+          <path d="M15 27 l8 8 l15 -17" />
+        </svg>
         <h1>{t.booked_title}</h1>
         <div className="notice">
           <strong>{s.day}</strong>

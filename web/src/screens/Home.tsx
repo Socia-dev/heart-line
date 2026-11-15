@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Brief, go, useApi, useRole } from "../api";
 import { Empty, LoadError, Loading } from "../components/State";
+import { stagger } from "../motion";
 
 type Item = Brief & { status: string; status_label: string; why: string; open: number; band: string | null; new: boolean };
 type Queue = {
@@ -69,8 +70,8 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.items.map((r) => (
-                    <tr key={`${r.id}-${r.status}`} className="link" onClick={() => go(`#/patient/${r.open}`)}>
+                  {data.items.map((r, i) => (
+                    <tr key={`${r.id}-${r.status}`} className={`link rise ${r.new ? "fresh" : ""}`} style={stagger(i, 25)} onClick={() => go(`#/patient/${r.open}`)}>
                       <td>
                         <a href={`#/patient/${r.open}`}>{r.name}</a> {r.new && <span className="pill new">New result</span>}
                         <div className="small muted">

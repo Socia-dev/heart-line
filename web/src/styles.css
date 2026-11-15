@@ -912,11 +912,6 @@ button.link.inline {
   display: inline;
   font-size: 14px;
 }
-/* In the guided demo, the one button to press on the page is ringed. */
-.guided .next button.primary {
-  outline: 2px solid var(--red-600);
-  outline-offset: 3px;
-}
 h1.display {
   font-size: 48px;
   line-height: 1.1;
@@ -976,4 +971,279 @@ h1.display {
   .guide-actions {
     justify-items: start;
   }
+}
+
+/* ---------------------------------------------------------------- motion
+   Strong ease-out for anything that answers a person. Only transform and opacity move.
+   Nothing starts from scale 0. Reduced motion gets the end state at once. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes slide-end {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+@keyframes slide-start {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+@keyframes nudge {
+  0%,
+  100% {
+    outline-color: transparent;
+    outline-offset: 2px;
+  }
+  50% {
+    outline-color: var(--red-500);
+    outline-offset: 5px;
+  }
+}
+@keyframes pulse-once {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.08);
+  }
+}
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise 320ms var(--ease-out) var(--d, 0ms) both;
+  }
+  .page-in {
+    animation: fade 220ms var(--ease-out) both;
+  }
+  .step-in {
+    animation: step-in 360ms var(--ease-out) both;
+  }
+  .pop {
+    animation: pop 260ms var(--ease-out) both;
+  }
+  .phone-step {
+    animation: slide-end 300ms var(--ease-out) both;
+  }
+  [dir="rtl"] .phone-step {
+    animation-name: slide-start;
+  }
+  /* The button the guide is waiting for: two calm pulses of its ring, then still. */
+  .nudge,
+  .guided .next button.primary,
+  .guided .phone button.primary {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    animation: nudge 1100ms ease-in-out 600ms 2;
+  }
+  .guided .next button.primary {
+    animation-delay: 700ms;
+  }
+  .tree-in {
+    animation: rise 380ms var(--ease-out) var(--d, 0ms) both;
+  }
+  .tree-changed {
+    animation: pulse-once 600ms var(--ease-out) 250ms both;
+  }
+  .tree-node rect,
+  .tree-in rect {
+    transition: fill 500ms ease;
+  }
+  tr.fresh td {
+    animation: fade 900ms ease both;
+  }
+  .reason-bars .fill,
+  .bars .fill,
+  .bars .track span {
+    transform-origin: left center;
+    animation: grow 700ms var(--ease-out) 150ms both;
+  }
+}
+@keyframes grow {
+  from {
+    transform: scaleX(0.02);
+  }
+}
+/* The guided demo keeps its ring visible after the pulses, so it is never only an animation. */
+.guided .next button.primary,
+.guided .phone button.primary,
+.nudge {
+  outline: 2px solid var(--red-600);
+  outline-offset: 3px;
+}
+
+/* Progress through the five moves, under the header */
+.moves {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  list-style: none;
+  margin: 0;
+  padding: 12px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-500);
+}
+.moves li {
+  padding-bottom: 8px;
+  transition: color var(--dur-ui) ease;
+}
+.moves li.past {
+  color: var(--ink-700);
+}
+.moves li.now {
+  color: var(--ink-900);
+  font-weight: 700;
+}
+.moves::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--g-200);
+}
+.moves-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 20%;
+  height: 2px;
+  background: var(--red-600);
+  z-index: 1;
+  transition: transform 500ms var(--ease-out);
+}
+@media (max-width: 600px) {
+  .moves {
+    font-size: 12px;
+  }
+}
+
+/* Two weeks pass */
+.warp {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(28, 21, 23, 0.55);
+  padding: 16px;
+  cursor: pointer;
+}
+.warp-card {
+  background: #fff;
+  border-radius: var(--r);
+  padding: 28px 32px;
+  width: min(440px, 100%);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18); /* it floats, so it may cast a shadow */
+}
+.warp-date {
+  font-size: 30px;
+  line-height: 36px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin: 4px 0 12px;
+}
+.warp-track {
+  height: 4px;
+  background: var(--g-200);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.warp-track span {
+  display: block;
+  height: 100%;
+  background: var(--red-600);
+  transform-origin: left center;
+  transition: transform 60ms linear;
+}
+.warp-lines {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: grid;
+  gap: 6px;
+  font-weight: 500;
+}
+.warp-hint {
+  margin-top: 16px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .warp {
+    animation: fade 200ms ease both;
+  }
+  .warp-card {
+    animation: pop 260ms var(--ease-out) both;
+  }
+  .warp.leaving {
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
+}
+
+/* The booked tick draws itself */
+.tick {
+  display: block;
+  margin: 8px 0 4px;
+}
+.tick circle {
+  fill: none;
+  stroke: var(--red-600);
+  stroke-width: 2;
+}
+.tick path {
+  fill: none;
+  stroke: var(--red-600);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 40;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tick path {
+    stroke-dashoffset: 40;
+    animation: draw 420ms var(--ease-out) 200ms forwards;
+  }
+}
+
+/* Choices on the phone answer the press */
+.phone .slot {
+  transition: background-color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
+}
+.phone .slot:active {
+  transform: scale(0.985);
+}
+
+/* Bars that change with a slider glide to their new length. */
+.bars .fill {
+  transition: width 450ms var(--ease-out);
 }

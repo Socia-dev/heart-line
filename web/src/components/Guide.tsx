@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError, ROLES, Role, changed, fmtDate, go, post, setRole, useRole } from "../api";
+import { reduced } from "../motion";
 import { describe } from "./State";
+import { advanceTwoWeeks } from "./TimeWarp";
 
 export type GuideState = {
   step: "start" | "review" | "wait_test" | "consent" | "send" | "relative" | "wait_family" | "found" | "stopped";
@@ -92,6 +94,10 @@ function stepFor(g: GuideState, final: boolean): Step {
 
 const here = (page: string) => (window.location.hash || "#/") === page;
 
+// The five moves from the welcome screen, and which of them each guide step belongs to.
+const MOVES = ["Finds", "Confirms", "Agrees", "Invites", "Repeats"];
+const MOVE_OF: Record<string, number> = { start: 0, review: 1, wait_test: 1, consent: 2, send: 3, relative: 3, wait_family: 3, found: 4, stopped: 2 };
+
 // The guided demo: one instruction at a time, and one button when the next move is not on the page itself.
 export default function Guide({ g, final, setFinal, onFree }: { g: GuideState; final: boolean; setFinal: (b: boolean) => void; onFree: () => void }) {
   const role = useRole();
@@ -100,13 +106,28 @@ export default function Guide({ g, final, setFinal, onFree }: { g: GuideState; f
   const s = stepFor(g, final);
   const n = final ? ORDER.length : ORDER.indexOf(g.step) + 1;
   const inPlace = (!s.role || s.role === role) && (!s.page || here(s.page));
+  const move = final ? 4 : MOVE_OF[g.step] ?? 0;
+  const key = `${final ? "overview" : g.step}-${inPlace ? "here" : "go"}`;
 
-  async function run(f: () => Promise<unknown>) {
+  // When the instruction changes and the thing to press is on the page, bring it into view.
+  useEffect(() => {
+    if (!inPlace) return;
+    const t = setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(".guided .next button.primary, .guided .phone button.primary");
+      if (!target) return;
+      const r = target.getBoundingClientRect();
+      if (r.top < 140 || r.bottom > window.innerHeight - 24)
+        target.scrollIntoView({ block: "center", behavior: reduced() ? "auto" : "smooth" });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [key, inPlace]);
+
+  async function run(f: () => Promise<unknown>, refresh = true) {
     setBusy(true);
     setErr(null);
     try {
       await f();
-      changed();
+      if (refresh) changed();
     } catch (e) {
       const d = describe(e as ApiError);
       setErr(`${d.title}. ${d.help}`);
@@ -131,23 +152,31 @@ export default function Guide({ g, final, setFinal, onFree }: { g: GuideState; f
     if (s.page) go(s.page);
     changed();
   };
+  const pass = () => run(advanceTwoWeeks, false);
 
   let button = null;
   if (g.step === "start") button = { label: "Start: a new lab result arrives", act: start };
-  else if (s.time) button = { label: "Two weeks pass", act: () => run(() => post("/api/simulate/advance", { weeks: 2 })) };
+  else if (s.time) button = { label: "Two weeks pass", act: pass };
   else if (!inPlace && s.open) button = { label: s.open, act: arrive };
   else if (g.step === "found" && !final) button = { label: "Next: the big picture", act: () => setFinal(true) };
-  else if (g.step === "relative" && inPlace) button = { label: "Skip: two weeks pass", act: () => run(() => post("/api/simulate/advance", { weeks: 2 })), quiet: true };
+  else if (g.step === "relative" && inPlace) button = { label: "Skip: two weeks pass", act: pass, quiet: true };
 
   const who = inPlace ? s.who ?? (s.role ? WHO[s.role] : null) : null;
   return (
     <div className="guide" role="region" aria-label="Guided demo">
+      <div className="wrap">
+        <ol className="moves" aria-label={`Step ${n} of ${ORDER.length}`}>
+          {MOVES.map((m, i) => (
+            <li key={m} className={i < move ? "past" : i === move ? "now" : ""}>
+              {m}
+            </li>
+          ))}
+          <span className="moves-bar" aria-hidden="true" style={{ transform: `translateX(${move * 100}%)` }} />
+        </ol>
+      </div>
       <div className="wrap guide-inner">
-        <div className="guide-text">
-          <div className="small muted">
-            Guided demo{n > 0 ? `, step ${n} of ${ORDER.length}` : ""}. {fmtDate(g.today)}
-          </div>
-          <p>
+        <div className="guide-text" aria-live="polite">
+          <p key={key} className="rise">
             {who && <strong>{who} </strong>}
             {inPlace ? s.text : s.before ?? s.text}
           </p>
@@ -155,11 +184,12 @@ export default function Guide({ g, final, setFinal, onFree }: { g: GuideState; f
         </div>
         <div className="guide-actions">
           {button && (
-            <button className={"quiet" in button ? "" : "primary"} disabled={busy} onClick={button.act}>
+            <button key={key} className={"quiet" in button ? "rise" : "primary nudge rise"} disabled={busy} onClick={button.act}>
               {busy ? "Working" : button.label}
             </button>
           )}
           <div className="row small">
+            <span className="muted">{fmtDate(g.today)}</span>
             <button className="link" disabled={busy} onClick={restart}>
               Restart
             </button>

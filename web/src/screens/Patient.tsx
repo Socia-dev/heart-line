@@ -4,6 +4,7 @@ import FamilyTree, { Legend, TreeNode } from "../components/FamilyTree";
 import Fold from "../components/Fold";
 import LabChart from "../components/LabChart";
 import { ActionError, LoadError, Loading } from "../components/State";
+import { CountUp } from "../motion";
 
 type Reason = { text: string; direction: "for" | "against"; weight: number };
 type Action = { id: string; label: string; primary: boolean; needs: string[] };
@@ -136,9 +137,9 @@ export default function Patient({ id }: { id: number }) {
       )}
 
       <div className={next?.plan ? "stack" : "grid g2"}>
-        <section className="next">
+        <section className="next step-in" key={next?.key ?? "none"}>
           {next?.just_done && (
-            <p className="done-note" role="status">
+            <p className="done-note pop" role="status">
               {next.just_done}
             </p>
           )}
@@ -154,13 +155,15 @@ export default function Patient({ id }: { id: number }) {
         </section>
 
         {score ? (
-          <section className="card">
+          <section className="card rise" style={{ "--d": "80ms" } as React.CSSProperties}>
             <h2>Why flagged</h2>
             <div className={`band big ${score.band.replace(" ", "-").toLowerCase()}`}>{score.band} FH</div>
             {forReasons.length > 0 ? (
               <ul className="reasons">
-                {forReasons.map((r) => (
-                  <li key={r.text}>{r.text}</li>
+                {forReasons.map((r, i) => (
+                  <li key={r.text} className="rise" style={{ "--d": `${200 + i * 90}ms` } as React.CSSProperties}>
+                    {r.text}
+                  </li>
                 ))}
               </ul>
             ) : (
@@ -467,7 +470,7 @@ function NextStep({ next, c, role, nodes, act, busy }: { next: Next; c: Case; ro
           {cells.map(([n, l, hot]) => (
             <div className="stat" key={l}>
               <div className="n" style={hot ? { color: "var(--brand)" } : undefined}>
-                {n}
+                <CountUp value={n} ms={900} />
               </div>
               <div className="l">{l}</div>
             </div>

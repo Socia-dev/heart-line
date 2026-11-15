@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useApi } from "../api";
 import LineChart from "../components/LineChart";
 import { LoadError, Loading } from "../components/State";
+import { CountUp } from "../motion";
 
 type Summary = {
   funnel: { step: string; count: number }[];
@@ -54,12 +55,14 @@ export default function Programme() {
             <div>
               <div className="grid g2">
                 <div className="stat">
-                  <div className="n">{t.found_detection_only}</div>
+                  <div className="n">
+                    <CountUp value={t.found_detection_only} />
+                  </div>
                   <div className="l">found by screening alone</div>
                 </div>
                 <div className="stat">
                   <div className="n" style={{ color: "var(--brand)" }}>
-                    {t.found_with_cascade}
+                    <CountUp value={t.found_with_cascade} />
                   </div>
                   <div className="l">
                     with family testing added ({t.found_with_cascade_range[0]} to {t.found_with_cascade_range[1]} across runs)

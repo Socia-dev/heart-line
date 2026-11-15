@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 export type TreeNode = {
   id: number;
   given: string;
@@ -49,6 +51,14 @@ const ROW = 112;
 type Placed = { key: string; x: number; gen: number; node?: TreeNode; label?: [string, string, string]; status: string; parentX?: number };
 
 export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[]; abroad: number; onOpen: (id: number) => void }) {
+  // Remember each relative's last status, so a relative whose status just changed can pulse once.
+  const seen = useRef<Map<number, string> | null>(null);
+  const changedIds = new Set<number>();
+  if (seen.current) for (const n of nodes) if (seen.current.has(n.id) && seen.current.get(n.id) !== n.status) changedIds.add(n.id);
+  useEffect(() => {
+    seen.current = new Map(nodes.map((n) => [n.id, n.status]));
+  }, [nodes]);
+  const firstPaint = seen.current === null;
   const index = nodes.find((n) => n.status === "index");
   if (!index) return null;
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -164,7 +174,12 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
           ];
           const clickable = !!p.node && p.status !== "index";
           return (
-            <g key={p.key} className={clickable ? "tree-node" : undefined} onClick={clickable ? () => onOpen(p.node!.id) : undefined}>
+            <g
+              key={p.key}
+              className={[clickable ? "tree-node" : "", firstPaint ? "tree-in" : "", p.node && changedIds.has(p.node.id) ? "tree-changed" : ""].join(" ")}
+              style={{ "--d": `${(p.gen - gMin) * 110}ms`, transformOrigin: `${cx(p.x)}px ${cy(p.gen) + NH / 2}px` } as React.CSSProperties}
+              onClick={clickable ? () => onOpen(p.node!.id) : undefined}
+            >
               <title>{p.node ? `${p.node.name}: ${st.label}` : lines.join(" ")}</title>
               <rect
                 x={x}
@@ -172,7 +187,7 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
                 width={NW}
                 height={NH}
                 rx={4}
-                fill={st.fill}
+                style={{ fill: st.fill }}
                 stroke={st.border ? "#d4d4d1" : "transparent"}
               />
               <text x={x + NW / 2} y={y + 21} textAnchor="middle" fontSize="13" fontWeight="700" fill={st.ink ?? "#1c1517"}>

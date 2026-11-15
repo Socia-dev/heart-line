@@ -2,6 +2,7 @@ import { Component, ReactNode, useEffect, useState } from "react";
 import { ROLES, Role, changed, useApi, useRole } from "./api";
 import DemoBar from "./components/DemoBar";
 import Guide, { GuideState, startDemo } from "./components/Guide";
+import TimeWarp from "./components/TimeWarp";
 import About from "./screens/About";
 import Audit from "./screens/Audit";
 import Children from "./screens/Children";
@@ -159,9 +160,12 @@ export default function App() {
       ) : (
         <DemoBar onGuide={() => setMode("guide")} />
       )}
-      <main className={`wrap main ${guided ? "guided" : ""}`} key={role}>
-        {screen}
+      <main className={`wrap main ${guided ? "guided" : ""}`}>
+        <div className="page-in" key={`${role}/${section ?? ""}/${arg ?? ""}`}>
+          {screen}
+        </div>
       </main>
+      <TimeWarp />
     </Boundary>
   );
 }
