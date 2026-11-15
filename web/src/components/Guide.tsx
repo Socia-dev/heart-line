@@ -72,7 +72,7 @@ function stepFor(g: GuideState, final: boolean): Step {
         who: WHO.relative,
         before: "The invitations are out. See what a relative receives.",
         open: "Open a relative's phone",
-        text: "The message never says who it came from or why. Pick any answer. English is at the top of the phone.",
+        text: "Older relatives may not read a text, so press Listen to hear the invitation spoken. Then pick any answer. English is at the top of the phone.",
       };
     case "wait_family":
       return { text: "Relatives are replying and getting tested.", time: true };

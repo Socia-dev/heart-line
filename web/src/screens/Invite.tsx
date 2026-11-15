@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { changed, post, useApi } from "../api";
 import ar from "../locale/ar.json";
 import en from "../locale/en.json";
+import Listen from "../components/Listen";
 
 type Lang = "ar" | "en";
 type View = {
@@ -156,6 +157,7 @@ export default function Invite({ token }: { token: string }) {
       <p className="small muted step">{t.step.replace("{n}", "1")}</p>
       <h1>{t.title}</h1>
       <p>{t.hello.replace("{name}", data.given)}</p>
+      <Listen token={token} lang={lang} />
       <p>{t.body}</p>
       <p className="muted">{t.detail}</p>
       <button className="primary wide" onClick={() => setStep("pick")}>

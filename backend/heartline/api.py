@@ -20,11 +20,13 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import cascade, features, fhir, live, machine, pilot, scoring, simulate, store
+from . import cascade, features, fhir, live, machine, pilot, scoring, simulate, store, voice
+
+voice.load_env()
 from .config import EVAL_PATH, PREMATURE_AGE
 from .features import reason_texts
 from .machine import CONFIRMED, OPEN, Refusal
@@ -463,6 +465,7 @@ class ActIn(BaseModel):
     reason: str | None = None
     note: str | None = None
     exclude: list[int] | None = None
+    voice: bool | None = None
 
 
 @app.post("/api/patients/{pid}/act")
@@ -520,6 +523,24 @@ def invite_view(token: str, con: sqlite3.Connection = Depends(db)):
     state = cascade.invitation_state(con, r)
     return {"given": store.person(con, r["person_id"])["given"], "lang": r["lang"], "state": state, "slot": r["slot"],
             "slots": _slots(store.today(con)) if state == "open" else [], "mock": True}
+
+
+@app.get("/api/voice/status")
+def voice_status():
+    """Whether real voice notes are available, and the fixed script. Never the key."""
+    return voice.status()
+
+
+@app.get("/api/invite/{token}/voice")
+def invite_voice(token: str, lang: str = "ar", con: sqlite3.Connection = Depends(db)):
+    """The invitation as a voice note. The same neutral words for everyone; cached after the first time."""
+    if con.execute("SELECT 1 FROM invitations WHERE token=?", (token,)).fetchone() is None:
+        raise Refusal("not_found", "invitation_not_found", "Invitation not found.")
+    try:
+        path = voice.clip(lang)
+    except voice.VoiceUnavailable as e:
+        raise Refusal("business", "voice_unavailable", str(e))
+    return FileResponse(path, media_type="audio/mpeg", headers={"Cache-Control": "public, max-age=86400"})
 
 
 class RespondIn(BaseModel):

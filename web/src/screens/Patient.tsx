@@ -303,7 +303,7 @@ export default function Patient({ id }: { id: number }) {
 
 // Detail from an audit row as a short phrase. Only a few keys are worth a reader's time.
 export function says(d: Record<string, unknown>) {
-  const pick = ["reason", "result_due", "found_variant", "result", "language", "slot", "basis", "why", "due"];
+  const pick = ["reason", "result_due", "found_variant", "result", "language", "voice", "slot", "basis", "why", "due"];
   const parts = pick.filter((k) => d[k] != null).map((k) => (k === "result_due" || k === "due" ? `due ${fmtDate(String(d[k]))}` : String(d[k])));
   return parts.length ? `(${parts.join(", ")})` : "";
 }
@@ -330,6 +330,9 @@ function NextStep({ next, c, role, nodes, act, busy }: { next: Next; c: Case; ro
   const [closing, setClosing] = useState(false);
   const [reason, setReason] = useState("");
   const [skip, setSkip] = useState<number[]>([]);
+  const voiceSt = useApi<{ key_set: boolean }>("/api/voice/status").data;
+  const voiceReal = !!voiceSt?.key_set;
+  const [withVoice, setWithVoice] = useState(true);
   const can = (id: string) => next.actions.find((a) => a.id === id);
   const toggle = (id: number) => setSkip(skip.includes(id) ? skip.filter((x) => x !== id) : [...skip, id]);
   const btn = (a: Action | undefined, inputs?: Record<string, unknown>, label?: string) =>
@@ -379,6 +382,7 @@ function NextStep({ next, c, role, nodes, act, busy }: { next: Next; c: Case; ro
     const kids = plan.relatives.filter((r) => r.outcome === "wellchild");
     const none = plan.relatives.filter((r) => r.outcome === "none");
     const n = invites.filter((r) => !skip.includes(r.id)).length;
+    const listenLine = (lang: string) => (lang === "ar" ? " استمع إلى الرسالة: heartline.example/v/…" : " Listen: heartline.example/v/…");
     return (
       <>
         {head}
@@ -405,6 +409,7 @@ function NextStep({ next, c, role, nodes, act, busy }: { next: Next; c: Case; ro
                   </td>
                   <td dir={r.lang === "ar" ? "rtl" : "ltr"} lang={r.lang}>
                     {r.message}
+                    {withVoice && <span className="muted">{listenLine(r.lang)}</span>}
                   </td>
                 </tr>
               ))}
@@ -422,8 +427,13 @@ function NextStep({ next, c, role, nodes, act, busy }: { next: Next; c: Case; ro
           </p>
         )}
         {plan.abroad > 0 && <p className="small muted">{plan.abroad} relatives live abroad. A family letter is prepared for the patient to share.</p>}
-        <p className="small">The message does not name the patient or the condition. This is a demo: nothing is really sent.</p>
-        <div className="row">{btn(can("start_cascade"), { exclude: skip }, `Send ${n} invitation${n === 1 ? "" : "s"}`)}</div>
+        <label className="row small" style={{ gap: 8 }}>
+          <input type="checkbox" checked={withVoice} onChange={(e) => setWithVoice(e.target.checked)} />
+          Include a voice note, for relatives who prefer to listen
+          <span className="muted">{voiceReal ? "(ElevenLabs voice)" : "(device voice; add an ElevenLabs key for a recorded voice)"}</span>
+        </label>
+        <p className="small">The message and the voice note do not name the patient or the condition. This is a demo: nothing is really sent.</p>
+        <div className="row">{btn(can("start_cascade"), { exclude: skip, voice: withVoice }, `Send ${n} invitation${n === 1 ? "" : "s"}`)}</div>
       </>
     );
   }

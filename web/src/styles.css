@@ -1493,3 +1493,47 @@ tr[aria-selected="true"] td {
   white-space: nowrap;
   z-index: 2;
 }
+
+/* Listen to the invitation */
+.listen {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 12px;
+  background: var(--g-100);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+.listen .small {
+  grid-column: 2;
+}
+.listen-btn {
+  grid-row: span 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--red-600);
+  border-color: var(--red-600);
+  color: #fff;
+}
+.listen-btn:hover:not(:disabled) {
+  background: var(--red-700) !important;
+  border-color: var(--red-700) !important;
+}
+.listen-track {
+  height: 4px;
+  background: var(--g-300);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.listen-track span {
+  display: block;
+  height: 100%;
+  background: var(--red-600);
+  transform-origin: left center;
+  transition: transform 250ms linear;
+}
+[dir="rtl"] .listen-track span {
+  transform-origin: right center;
+}

@@ -11,7 +11,7 @@ MODEL_PATH = DATA / "model.joblib"
 EVAL_PATH = DATA / "evaluation.json"
 CANDIDATE = DATA / "candidate"   # a retrain writes here until someone chooses to use it
 VOICE_CACHE = DATA / "voice"
-ENV_PATH = ROOT / ".env"
+ENV_PATH = Path(os.environ.get("HEARTLINE_ENV", ROOT / ".env"))
 
 # Everything in the synthetic world is dated relative to this day.
 REF_DATE = date(2026, 11, 15)

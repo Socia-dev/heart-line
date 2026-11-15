@@ -128,7 +128,8 @@ def act(con, pid: int, role: str, action: str, inputs: dict | None = None, commi
 
     out = {"done": d.transition.done}
     if d.run == "start_cascade":
-        out["cascade"] = _send(con, get_case(con, case["id"]), role, [int(x) for x in inputs.get("exclude") or []])
+        out["cascade"] = _send(con, get_case(con, case["id"]), role, [int(x) for x in inputs.get("exclude") or []],
+                               bool(inputs.get("voice")))
     if commit:
         con.commit()
     return out
@@ -167,7 +168,7 @@ def plan_cascade(con, case) -> dict:
             "wellchild": sum(r["outcome"] == "wellchild" for r in rows)}
 
 
-def _send(con, case, role: str, skip: list[int]) -> dict:
+def _send(con, case, role: str, skip: list[int], voice: bool = False) -> dict:
     now = today(con)
     plan = plan_cascade(con, case)
     out = {"invited": 0, "wellchild": 0, "not_contacted": 0, "abroad": plan["abroad"]}
@@ -178,7 +179,7 @@ def _send(con, case, role: str, skip: list[int]) -> dict:
                         "VALUES (?,?,?,?,?,?,?)", (token, r["id"], case["id"], r["lang"], "sent", now.isoformat(),
                                                    (now + timedelta(days=INVITE_VALID_DAYS)).isoformat()))
             audit(con, role, "invitation_sent", "Invitation sent by SMS (mock)", person_id=r["id"],
-                  detail={"language": "Arabic" if r["lang"] == "ar" else "English"})
+                  detail={"language": "Arabic" if r["lang"] == "ar" else "English", "voice": "with a voice note" if voice else None})
             out["invited"] += 1
         elif r["outcome"] == "wellchild" and r["id"] not in skip:
             con.execute("INSERT INTO wellchild (person_id, case_id, flagged_at, due_date, status) VALUES (?,?,?,?,?)",
