@@ -4,9 +4,12 @@ Prototype for the Future Health Digital Innovation Challenge (hack2skill, Abu Dh
 
 One line: one blood test can find a whole family.
 
+> **Status, 15 Nov 2026.** Steps 1 to 8 are built. The design then changed after a research pass (`docs/research/`): the workflow is now one transition table with roles (`machine.py`), simulation is separate from the engine (`simulate.py`), and positive relatives are no longer consented automatically. Where this plan and `docs/architecture.md` disagree, the architecture document is current.
+
+
 ## The idea
 
-Familial hypercholesterolaemia (FH) is an inherited form of high cholesterol. It causes early heart attacks, and it's very treatable once found. It affects about 1 in 112 Gulf adults, roughly three times the global rate, yet most people who have it have never been diagnosed. Each person found has a 50% chance of passing it to each parent, sibling and child. Usually fewer than 1 in 4 relatives ever get tested.
+Familial hypercholesterolaemia (FH) is an inherited form of high cholesterol. It causes early heart attacks, and it's very treatable once found. In the Gulf FH Registry, about 1 in 112 screened adults met clinical criteria for FH (Alhabib et al., PLoS One 2021), which the authors put at about three times the worldwide estimate. Most people who have it have never been diagnosed. Each person found has a 50% chance of passing it to each parent, sibling and child. Without a programme that contacts relatives directly, few get tested: a review of ten cascade programmes found 0.86 new cases per index patient with indirect contact against 2.06 with direct contact (Lee et al., Circ Genom Precis Med 2019).
 
 Heart Line does four things:
 
@@ -38,21 +41,21 @@ heart-line/
   backend/
     requirements.txt
     heartline/
-      config.py             DONE  paths, REF_DATE 2026-11-15, seed, premature-age cut-offs
-      generate.py           DONE  synthetic population -> SQLite
-      dlcn.py               DONE  Dutch Lipid Clinic Network score with reasons
-      features.py           TODO  per-person feature table (record-only and family-linked)
-      train.py              TODO  cross-validated model, evaluation.json, model.joblib, scores table
-      store.py              TODO  db helpers, first-degree relatives, audit log
-      cascade.py            TODO  case state machine, invitations, Well-Child, simulate step
-      pilot.py              TODO  12-month pilot projection, run in memory
-      fhir.py               TODO  FHIR R4 bundle export per patient
-      api.py                TODO  FastAPI app
-    tests/                  TODO  dlcn, inheritance, privacy (no truth leaks), cascade
-  web/                      TODO  React app
+      config.py             paths, REF_DATE 2026-11-15, seed, premature-age cut-offs
+      generate.py           synthetic population -> SQLite
+      dlcn.py               Dutch Lipid Clinic Network score with reasons
+      features.py           per-person feature table (record-only and family-linked)
+      train.py              cross-validated model, evaluation.json, model.joblib, scores table
+      store.py              db helpers, first-degree relatives, audit log
+      cascade.py            case state machine, invitations, Well-Child, simulate step
+      pilot.py              12-month pilot projection, run in memory
+      fhir.py               FHIR R4 bundle export per patient
+      api.py                FastAPI app
+    tests/                  dlcn, inheritance, privacy (no truth leaks), cascade
+  web/                      React app
 ```
 
-## Step 1: synthetic population (done)
+## Step 1: synthetic population
 
 Run `cd backend && python -m heartline.generate`. It produces about 80,000 people, 86,000 lipid panels and around 700 FH carriers (about 1 in 114).
 

@@ -2,14 +2,17 @@
 
 One blood test can find a whole family.
 
-Prototype for the Future Health Digital Innovation Challenge (hack2skill, Abu Dhabi), challenge C04, Precision Prevention and Screening. Heart Line finds familial hypercholesterolaemia (FH) in routine cholesterol results. A clinician confirms each case, the patient consents, and then parents, siblings and adult children get private invitations to a free cholesterol check. Each relative who tests positive starts the same process for their own family. Children are flagged for their next Well-Child Visit.
+Prototype for the Future Health Digital Innovation Challenge (hack2skill, Abu Dhabi), challenge C04, Precision Prevention and Screening.
+
+Familial hypercholesterolaemia (FH) is inherited high cholesterol. It causes early heart attacks and is very treatable once found, yet most people who have it do not know. Heart Line spots likely FH in routine cholesterol results. A clinician confirms it and asks the patient about their family. With the patient's agreement, a coordinator invites parents, brothers, sisters and adult children to a free check, and children are tested at their next Well-Child Visit. Each relative who tests positive goes to their own clinician, who asks about their family in turn.
 
 ## What is real and what is not
 
-- **All data is synthetic.** About 80,000 made-up people. No real patient data is used anywhere.
-- **Every accuracy number is on synthetic data.** Real-world performance has not been measured.
-- **Messaging, lab and Well-Child results are mocks.** No SMS or WhatsApp is sent. Test results are simulated from the `truth` table, which the API never returns.
-- **The FHIR export is a format, not an integration.** It is not connected to Malaffi or any exchange.
+- **All data is synthetic.** About 80,000 made-up people. No real patient data anywhere.
+- **Every accuracy number is on synthetic data** and is higher than a real deployment would see. The Model page shows published figures beside Heart Line's and says why. See `docs/limitations.md`.
+- **Messaging, lab results, bookings and Well-Child results are simulated.**
+- **There is no sign-in.** A role switch stands in for four members of staff.
+- **The FHIR export is a format, not an integration.**
 
 ## Run it
 
@@ -18,8 +21,8 @@ Needs Python 3.11 or later and Node 22.
 ```bash
 cd backend
 pip install -r requirements.txt
-python -m heartline.generate      # synthetic population -> data/heartline.db (about 10 s)
-python -m heartline.train         # models, evaluation.json, model.joblib, scores (about 30 s)
+python -m heartline.generate      # synthetic population, about 10 seconds
+python -m heartline.train         # models, scores, evaluation.json, about a minute
 python -m uvicorn heartline.api:app --port 8010
 ```
 
@@ -31,73 +34,76 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. Vite proxies `/api` to `http://127.0.0.1:8010`; set `HEARTLINE_API` to point it somewhere else.
+Open http://localhost:5173. Vite proxies `/api` to port 8010 (`HEARTLINE_API` changes that).
 
-Tests (from `backend/`, after generate and train; they work on a temporary copy of the database):
+Or as one container, serving everything on port 8010 (not yet built and run by the team; treat as untested):
+
+```bash
+docker build -t heartline .
+docker run -p 8010:8010 heartline
+```
+
+Tests, from `backend/` after generate and train:
 
 ```bash
 python -m unittest discover -s tests -t .
 ```
 
-## Demo story (about 3 minutes)
+## The demo (about 3 minutes)
 
-The demo bar under the header (New lab result, Advance two weeks, Reset) is on every screen, so most of the story happens on one patient page.
+The bar under the header holds the demo controls and the role switch. "Demo story" in that bar lists the steps and ticks them off as they really happen.
 
-1. Select **New lab result**. A new LDL result arrives, Heart Line scores it live and opens the flagged patient, with the reasons.
-2. Select **Order genetic test**, then **Advance two weeks**. The variant is found.
-3. Select **Patient agrees**, then **Start family testing**. Relatives turn yellow on the family tree. On **Families**, open **Preview invitation** for one relative, switch to Arabic (right to left) and book a check.
-4. **Advance two weeks** again. One relative tests positive and starts family testing for their own family; their children appear on the tree and on **Children**.
-5. **Overview** shows the 12-month pilot projection: people found per person found by screening.
-6. **Model** shows Heart Line against the DLCN score at the same workload. Accuracy tables, fairness and the model card are folded underneath. The audit log is linked in the footer.
+1. **As the clinician.** Press New lab result. A first cholesterol result arrives and is flagged. The patient page shows a band (Likely), the DLCN score beside it, and the reasons for and against. Order the genetic test.
+2. Press Advance two weeks. The variant is found. The page now gives the question to ask the patient and lists the relatives; untick anyone the patient does not want contacted. Press Patient agrees. The case is handed to the coordinator.
+3. **Switch to the family coordinator.** The family is under To start. The page shows every relative, the exact message each will get in their language, the children who go to Well-Child, and who is not contacted and why. Send.
+4. Under Invitations, open See their page for one relative. This is the relative's phone view, Arabic first. Book, decline, say you were already tested, or ask for a call.
+5. Advance two weeks. **Switch back to the clinician.** A relative found through the family is under Results back, waiting for their own clinician to ask about their family. The first patient's tree shows who replied, never a relative's result.
+6. **Switch to the programme lead.** Programme shows a year's projection with sliders and published programmes beside it. "Can we trust the flags?" shows the four-way comparison and why the numbers are too good. Audit shows every decision and who made it.
 
-**Reset** clears cases, invitations, Well-Child flags and the audit log, and keeps the population. Random outcomes are seeded by person, so the demo plays out the same way each time.
+Reset clears the demo and keeps the population. Outcomes are seeded, so the story plays the same way each time.
 
-## How it works
+## How it is built
 
-`backend/heartline/`
+```
+backend/heartline/
+  generate.py   synthetic population with linked families
+  features.py   features and signed reasons
+  train.py      cross-validated models, calibration, comparison, fairness -> evaluation.json
+  machine.py    the workflow as one transition table: roles, guards, next step
+  cascade.py    applies decisions: cases, consent, invitations, audit
+  simulate.py   the demo's outside world (lab results, replies, time)
+  pilot.py      12-month projection with adjustable assumptions
+  fhir.py       FHIR R4 export
+  api.py        HTTP, roles, redaction
+web/src/
+  screens/      Home (role queue), Patient, Families, Invite, Children, Programme, Model, Audit, About
+  locale/       the relative's page in English and Arabic
+```
 
-| File | What it does |
+Read next:
+
+| Document | What it covers |
 | --- | --- |
-| `config.py` | Paths, reference date 15 Nov 2026, seed. `HEARTLINE_DB` overrides the database path. |
-| `generate.py` | Synthetic population: Emirati three-generation families, expatriate households, single workers. FH is inherited with probability 0.5 per child. |
-| `dlcn.py` | Dutch Lipid Clinic Network score, with reasons. |
-| `features.py` | Per-person features. Model A uses one record; model B adds what first-degree relatives' records show. |
-| `train.py` | LightGBM, 5-fold GroupKFold by extended family. Out-of-fold scores, SHAP reasons, `evaluation.json`, `model.joblib`, `scores` table. |
-| `store.py` | Database helpers, simulated clock, relatives, audit log. |
-| `cascade.py` | Case state machine, consent, invitations, Well-Child flags, the two-week `advance()` step, `ingest_new_result()`. |
-| `pilot.py` | 12-month pilot projection, run in memory. |
-| `fhir.py` | FHIR R4 Bundle: Patient, RelatedPerson, Observation (LOINC), RiskAssessment, Condition (SNOMED 398036000). |
-| `api.py` | FastAPI app. |
+| `docs/architecture.md` | Modules, roles, how a request flows, what changes for a pilot |
+| `docs/assumptions.md` | Every rate in the generator, simulation and projection, with its source |
+| `docs/limitations.md` | What Heart Line cannot claim |
+| `docs/DECISIONS.md` | 23 decisions, each with what was rejected |
+| `docs/DESIGN.md` | The design system and how it was adapted from KUEC Attar |
+| `docs/research/` | Studies of three in-house products, the open-source field, the evidence and the judging criteria |
 
-`web/src/screens/` holds the eight screens: Overview, Worklist, Patient, Families, Invite (relative's phone view), Children (Well-Child), Model and Audit.
+## Results on synthetic data
 
-### Case statuses
+34,977 people have at least one cholesterol result; 315 of them have FH. Intervals are 95% bootstrap intervals.
 
-```
-flagged -> in_review -> test_ordered -> confirmed_genetic
-                                    \-> no_variant -> clinical_fh (DLCN 6 or more) | dismissed
-flagged -> dismissed
-```
+If clinicians review 233 flagged people (the number DLCN 6 or more flags), how many have FH:
 
-Nothing reaches a relative until the case is confirmed and the patient has consented. Invitations never mention who triggered them or why; the privacy tests check this.
+| Method | People with FH found | AUROC | AUPRC |
+| --- | --- | --- | --- |
+| DLCN score, from the chart | 110 | 0.957 | 0.355 |
+| DLCN with linked family records | 107 | 0.968 | 0.428 |
+| Heart Line, own record only | 137 | 0.964 | 0.499 |
+| Heart Line, with linked family records | 189 | 0.978 | 0.732 |
 
-### Model results (synthetic data)
+The worklist cut-off flags 623 people and finds 83% of those with FH (78% to 87%); 42% of its flags are right (37% to 46%). Published models in real populations report 1% to 15% for that last figure. Bands: of people marked Very likely, 86% had FH; Likely, 41%; Possible, 13%.
 
-From `backend/data/evaluation.json` after a fresh generate and train. 34,977 people have at least one lipid panel; 315 of them have FH.
-
-| Method | AUROC | AUPRC | Found at 233 flagged | Sensitivity | PPV |
-| --- | --- | --- | --- | --- | --- |
-| DLCN (chart family history only) | 0.957 | 0.355 | 110 | 35% | 47% |
-| Model A (own record) | 0.964 | 0.499 | 137 | 43% | 59% |
-| Model B (family-linked) | 0.978 | 0.732 | 189 | 60% | 81% |
-
-233 is the number DLCN 6 or more flags. The worklist uses a model B cut-off of 0.04: 623 flagged, 83% sensitivity, 42% PPV.
-
-The 12-month pilot projection (20 reviews a week) finds 252 people by screening alone and 440 with family testing added: 1.7 people per person found by screening.
-
-## Limits
-
-- Synthetic data only. The family links are complete here and will be patchier in real records.
-- People with no lipid results cannot be flagged; family testing is how they get found.
-- Model B uses relatives' records to score someone. That needs a legal basis and governance approval before any real use.
-- Check governance claims against Federal Decree-Law 49 of 2023 before quoting article numbers.
+The 12-month projection finds 249 people by screening alone and 421 with family testing (412 to 431 across five runs): 0.69 new cases per confirmed patient. Published first-degree-only programmes report 0.80.

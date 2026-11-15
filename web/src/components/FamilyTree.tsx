@@ -151,7 +151,7 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
             const x2 = cx(p.parentX!);
             const y2 = cy(p.gen - 1) + NH;
             const ym = (y1 + y2) / 2;
-            return <path key={`e${p.key}`} d={`M${x1},${y1} V${ym} H${x2} V${y2}`} fill="none" stroke="#c9c4be" strokeWidth="1.5" />;
+            return <path key={`e${p.key}`} d={`M${x1},${y1} V${ym} H${x2} V${y2}`} fill="none" stroke="#a8a8a4" strokeWidth="1" />;
           })}
         {placed.map((p) => {
           const st = STATUS[p.status] ?? STATUS.unknown;
@@ -171,17 +171,17 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
                 y={y}
                 width={NW}
                 height={NH}
-                rx={10}
+                rx={4}
                 fill={st.fill}
-                stroke={st.border ? "#c9c4be" : "transparent"}
+                stroke={st.border ? "#d4d4d1" : "transparent"}
               />
-              <text x={x + NW / 2} y={y + 21} textAnchor="middle" fontSize="13" fontWeight="650" fill={st.ink ?? "#1c1917"}>
+              <text x={x + NW / 2} y={y + 21} textAnchor="middle" fontSize="13" fontWeight="700" fill={st.ink ?? "#1c1517"}>
                 {lines[0].length > 15 ? lines[0].slice(0, 14) + "." : lines[0]}
               </text>
-              <text x={x + NW / 2} y={y + 37} textAnchor="middle" fontSize="11.5" fill={st.ink ?? "#5f5a55"}>
+              <text x={x + NW / 2} y={y + 37} textAnchor="middle" fontSize="12" fill={st.ink ?? "#463c3f"}>
                 {lines[1]}
               </text>
-              <text x={x + NW / 2} y={y + 53} textAnchor="middle" fontSize="11" fill={st.ink ?? "#5f5a55"}>
+              <text x={x + NW / 2} y={y + 53} textAnchor="middle" fontSize="12" fill={st.ink ?? "#463c3f"}>
                 {lines[2]}
               </text>
             </g>

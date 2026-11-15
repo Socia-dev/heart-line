@@ -46,7 +46,7 @@ export default function Home() {
         <Loading rows={6} />
       ) : (
         <>
-          <div className="row">
+          <div className="spread" style={{ alignItems: "center" }}>
             <div className="tabs" role="tablist">
               {data.tabs.map((t) => (
                 <button key={t.id} role="tab" aria-selected={data.tab === t.id} className={data.tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>

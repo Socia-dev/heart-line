@@ -14,14 +14,14 @@ export default function LineChart({ series, labels, height = 220 }: { series: Se
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Cumulative people found by month">
       {ticks.map((t) => (
         <g key={t}>
-          <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke="#ece9e5" />
-          <text x={pad.l - 8} y={y(t) + 4} fontSize="11" textAnchor="end" fill="#8a847e">
+          <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke="#e6e6e4" />
+          <text x={pad.l - 8} y={y(t) + 4} fontSize="12" textAnchor="end" fill="#70666a">
             {t}
           </text>
         </g>
       ))}
       {labels.map((l, i) => (
-        <text key={l} x={x(i)} y={H - 8} fontSize="11" textAnchor="middle" fill="#8a847e">
+        <text key={l} x={x(i)} y={H - 8} fontSize="12" textAnchor="middle" fill="#70666a">
           {l}
         </text>
       ))}
@@ -33,7 +33,7 @@ export default function LineChart({ series, labels, height = 220 }: { series: Se
             strokeWidth="2.5"
             points={s.values.map((v, i) => `${x(i)},${y(v)}`).join(" ")}
           />
-          <text x={x(s.values.length - 1) - 4} y={y(s.values[s.values.length - 1]) - 8} fontSize="12" textAnchor="end" fill={s.color} fontWeight="600">
+          <text x={x(s.values.length - 1) - 4} y={y(s.values[s.values.length - 1]) - 8} fontSize="12" textAnchor="end" fill={s.color} fontWeight="700">
             {s.values[s.values.length - 1]}
           </text>
         </g>

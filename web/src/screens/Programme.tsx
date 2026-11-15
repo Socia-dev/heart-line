@@ -81,7 +81,7 @@ export default function Programme() {
                 labels={p.data.series.map((x) => String(x.month))}
                 series={[
                   { name: "With family testing", color: "#9f1239", values: p.data.series.map((x) => x.cumulative_with_cascade) },
-                  { name: "Screening alone", color: "#8a847e", values: p.data.series.map((x) => x.cumulative_detection_only) },
+                  { name: "Screening alone", color: "#82827e", values: p.data.series.map((x) => x.cumulative_detection_only) },
                 ]}
               />
               <div className="legend">
@@ -90,7 +90,7 @@ export default function Programme() {
                   With family testing
                 </span>
                 <span>
-                  <i style={{ background: "#8a847e" }} />
+                  <i style={{ background: "#82827e" }} />
                   Screening alone
                 </span>
                 <span>People found, by month</span>
