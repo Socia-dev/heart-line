@@ -187,6 +187,12 @@ summary:focus-visible,
   .main {
     padding-top: 24px;
   }
+  .today {
+    display: none;
+  }
+  .table-wrap > table {
+    min-width: 560px;
+  }
 }
 
 /* ---------------------------------------------------------------- header: the dark ink field */
