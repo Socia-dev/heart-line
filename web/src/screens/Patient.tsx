@@ -5,6 +5,7 @@ import Fold from "../components/Fold";
 import LabChart from "../components/LabChart";
 import { ActionError, LoadError, Loading } from "../components/State";
 import { CountUp } from "../motion";
+import WhyCard from "../components/WhyCard";
 
 type Reason = { text: string; direction: "for" | "against"; weight: number };
 type Action = { id: string; label: string; primary: boolean; needs: string[] };
@@ -107,7 +108,6 @@ export default function Patient({ id }: { id: number }) {
     }
   }
   const timeline = decisionsOnly ? data.timeline.filter((t) => t.decision) : data.timeline;
-  const forReasons = score?.reasons.filter((r) => r.direction === "for") ?? [];
   const against = score?.reasons.filter((r) => r.direction === "against") ?? [];
   const top = Math.max(0.001, ...against.map((r) => r.weight));
 
@@ -136,54 +136,33 @@ export default function Patient({ id }: { id: number }) {
         </p>
       )}
 
-      <div className={next?.plan ? "stack" : "grid g2"}>
-        <section className="next step-in" key={next?.key ?? "none"}>
-          {next?.just_done && (
-            <p className="done-note pop" role="status">
-              {next.just_done}
-            </p>
-          )}
-          {next && c ? (
-            <NextStep next={next} c={c} role={data.role} nodes={data.family.nodes} act={act} busy={busy} />
-          ) : (
-            <>
-              <h2>Status</h2>
-              <p style={{ margin: 0 }}>{data.contact ? CONTACT[data.contact.status] : "Not flagged. No action needed."}</p>
-            </>
-          )}
-          {err && <ActionError error={err} />}
-        </section>
-
-        {score ? (
-          <section className="card rise" style={{ "--d": "80ms" } as React.CSSProperties}>
-            <h2>Why flagged</h2>
-            <div className={`band big ${score.band.replace(" ", "-").toLowerCase()}`}>{score.band} FH</div>
-            {forReasons.length > 0 ? (
-              <ul className="reasons">
-                {forReasons.map((r, i) => (
-                  <li key={r.text} className="rise" style={{ "--d": `${200 + i * 90}ms` } as React.CSSProperties}>
-                    {r.text}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">No strong signals in the record.</p>
-            )}
-            {score.flagged && score.band_rate != null && (
-              <p className="small muted" style={{ margin: "12px 0 0" }}>
-                About {Math.round(score.band_rate * 10)} in 10 people with this rating had FH, in synthetic data. A suggestion, not a diagnosis.
-              </p>
-            )}
-          </section>
-        ) : (
-          <section className="card">
-            <h2>Not scored</h2>
-            <p className="muted" style={{ margin: 0 }}>
-              No cholesterol results on record, so the model has nothing to go on.
-            </p>
-          </section>
+      <section className="next step-in" key={next?.key ?? "none"}>
+        {next?.just_done && (
+          <p className="done-note pop" role="status">
+            {next.just_done}
+          </p>
         )}
-      </div>
+        {next && c ? (
+          <NextStep next={next} c={c} role={data.role} nodes={data.family.nodes} act={act} busy={busy} />
+        ) : (
+          <>
+            <h2>Status</h2>
+            <p style={{ margin: 0 }}>{data.contact ? CONTACT[data.contact.status] : "Not flagged. No action needed."}</p>
+          </>
+        )}
+        {err && <ActionError error={err} />}
+      </section>
+
+      {score && data.labs.length > 0 ? (
+        <WhyCard pid={id} band={score.band} bandRate={score.flagged ? score.band_rate : null} />
+      ) : (
+        <section className="card">
+          <h2>Not scored</h2>
+          <p className="muted" style={{ margin: 0 }}>
+            No cholesterol results on record, so the model has nothing to go on.
+          </p>
+        </section>
+      )}
 
       <section className="card">
         <div className="spread">
