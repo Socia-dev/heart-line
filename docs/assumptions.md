@@ -29,7 +29,8 @@ Sources are listed in full in `docs/research/05-evidence-and-judging.md`.
 | A genetic test finds a variant that is there | 95% | Chosen | Lower sensitivity sends more true cases to "no variant found" |
 | A genetic test never reports a variant that is not there | 100% | Simplification | Real panels report variants of uncertain significance, which need a pathway of their own |
 | Test turnaround | 14 days | Chosen | Changes waits, not counts |
-| Invited relatives who book and attend | 60% | Chosen. One study in the Lee 2019 review reports 35% for indirect contact; direct contact does better | The projection's "found through family" scales almost linearly with this. It is a slider on the Programme page |
+| Invited relatives who get tested (projection) | 30% | Recent trials: 21% of first-degree relatives in IMPACT-FH (JACC Adv 2024), 30.4% with patient-sent invitations in CATCH (JAMA Netw Open 2026), under a third in Wales (Cox 2024). Direct contact may do better, but no trial shows it yet | The projection's "found through family" scales almost linearly with this. It is a slider on the Programme page. At 60% the projection finds 421 instead of 379 |
+| Invited relatives who book, in the scripted demo | 60% | Chosen so the guided demo shows a booking within a few clicks | Affects the demo story only, not the projection (`simulate.BOOK_RATE`) |
 | Children tested at the visit they were flagged for | 70% | Chosen | As above, for children |
 | No reply becomes "no response" | 28 days | Chosen | Changes waits |
 | A relative's targeted test is always correct | 100% | Simplification | Small effect |
@@ -40,7 +41,7 @@ Sources are listed in full in `docs/research/05-evidence-and-judging.md`.
 | --- | --- | --- | --- |
 | Clinician reviews per week | 20 | Chosen. A slider | Sets how fast the flagged list is worked through, so it sets the first six months |
 | Patients who agree to family testing | 85% | Chosen. A slider | Scales everything after consent |
-| Relatives contacted | First-degree only | Design choice | The Lee 2019 review reports 0.80 new cases per index patient for first-degree only and 3.65 when second- and third-degree relatives are included. Heart Line's 0.69 is consistent with the first |
+| Relatives contacted | First-degree only | Design choice | The Lee 2019 review reports 0.80 new cases per index patient for first-degree only and 3.65 when second- and third-degree relatives are included. Heart Line's 0.52, at 30% uptake, is below the first; at 60% uptake it is 0.69 |
 | Length | 52 weeks | Chosen | Chains are still running at the end |
 | Runs | 5 seeds; the range is shown | | A single run would hide the spread |
 

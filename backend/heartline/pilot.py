@@ -14,11 +14,14 @@ from datetime import date
 
 from functools import lru_cache
 
-from .simulate import BOOK_RATE, CONSENT_RATE, DETECTION_SENSITIVITY, WELLCHILD_RATE
+from .simulate import CONSENT_RATE, DETECTION_SENSITIVITY, WELLCHILD_RATE
 from .config import DB_PATH, LDL_P95_ADULT, LDL_P95_CHILD, REF_DATE, SEED
 
 WEEKS = 52
 REVIEWS_PER_WEEK = 20
+# Invited relatives who get tested. Recent trials: 21% of first-degree relatives (IMPACT-FH, 2024),
+# 30% with a patient-sent invitation (CATCH, 2026). The demo story books more often; see simulate.BOOK_RATE.
+UPTAKE = 0.30
 TEST_WEEKS = 2       # genetic test turnaround
 RESPOND_WEEKS = 2    # invitation to test
 WELLCHILD_RETRY = 13
@@ -178,7 +181,7 @@ def _once(path: str, reviews_per_week: int, consent_rate: float, uptake: float, 
 
 
 def run(path=None, reviews_per_week: int = REVIEWS_PER_WEEK, consent_rate: float = CONSENT_RATE,
-        uptake: float = BOOK_RATE, seeds: int = 5) -> dict:
+        uptake: float = UPTAKE, seeds: int = 5) -> dict:
     """The projection for one set of assumptions, with the spread across several random seeds."""
     path = str(path or DB_PATH)
     runs = [_once(path, int(reviews_per_week), float(consent_rate), float(uptake), s) for s in range(seeds)]

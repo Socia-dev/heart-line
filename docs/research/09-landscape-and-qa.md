@@ -86,7 +86,7 @@ Heart Line is the opposite direction: from adults down to children. The two rout
 | Hereditary cancer meta-analysis (Frey 2022) | Direct vs patient-mediated | Counselling uptake 63% vs 35% |
 | UAE | Imperial College London Diabetes Centre and SEHA research project 2017 to 2020 (NCT03597958) | No standing public cascade programme found |
 
-**Heart Line:** direct contact by a coordinator after the patient consents, with per-relative exclusions. That is the arm with the strongest uptake signal. In the projection, 60% of invited relatives test (literature: 21 to 30% in recent trials) and there are 0.69 new cases per index. That matches first-degree-only programmes (0.80) and sits below wider programmes (3.65).
+**Heart Line:** direct contact by a coordinator after the patient consents, with per-relative exclusions. That is the arm with the strongest uptake signal. The projection assumes 30% of invited relatives get tested, in line with recent trials (21 to 30%), and gives 0.52 new cases per index. That is below first-degree-only programmes (0.80) and wider programmes (3.65).
 
 ### 2e. Products and companies
 
@@ -313,13 +313,13 @@ DECIDE-AI is the reporting guide for that early live stage.
 | Model AUROC | 0.96 own record, 0.98 with relatives | 0.78 to 0.95 (JAMIA 2025 review) |
 | PPV at worklist cut-off | 42% at 83% sensitivity | 11 to 67% real world; FIND FH 15% of flags diagnosed at Dartmouth |
 | Found at same workload (233 reviews) | 189 with relatives vs 110 DLCN | No published comparison found |
-| Relatives tested of those invited | 60% (assumption) | 21% (IMPACT-FH), 30% (CATCH), under a third (Wales) |
-| New cases per index | 0.69 (first-degree only) | 0.80 first-degree only; 1.65 average; 3.65 wider (Lee 2019) |
-| Found in 12 months, screening vs screening plus families | 249 vs 421 | n/a |
+| Relatives tested of those invited | 30% (assumption, slider) | 21% (IMPACT-FH), 30% (CATCH), under a third (Wales) |
+| New cases per index | 0.52 (first-degree only, 30% uptake) | 0.80 first-degree only; 1.65 average; 3.65 wider (Lee 2019) |
+| Found in 12 months, screening vs screening plus families | 249 vs 379 (374 to 392 across runs) | n/a |
 | FH prevalence in data | 1 in 115 | 1 in 112 Gulf clinic, clinical (Alhabib 2021); 1 in 125 Qatar genomes |
 | Mean LDL, adults | 3.04 mmol/L | 2.89 (US NHANES 2017 to 2018) |
 
-The 60% uptake is the projection's assumption and is above recent trials. Either lower it to about 30% for the pitch, or say plainly that it is an assumption.
+The projection uses 30% uptake, in line with recent trials. At 60%, which direct contact might reach but no trial has shown, it finds 421.
 
 ---
 

@@ -25,8 +25,8 @@ export default function Programme() {
   const s = useApi<Summary>("/api/summary");
   const [reviews, setReviews] = useState(20);
   const [consent, setConsent] = useState(0.85);
-  const [uptake, setUptake] = useState(0.6);
-  const [q, setQ] = useState("reviews_per_week=20&consent_rate=0.85&uptake=0.6");
+  const [uptake, setUptake] = useState(0.3);
+  const [q, setQ] = useState("reviews_per_week=20&consent_rate=0.85&uptake=0.3");
   useEffect(() => {
     const t = setTimeout(() => setQ(`reviews_per_week=${reviews}&consent_rate=${consent}&uptake=${uptake}`), 200);
     return () => clearTimeout(t);
@@ -87,7 +87,7 @@ export default function Programme() {
               <div className="sliders">
                 <Slider label="Clinician reviews a week" value={reviews} min={5} max={60} step={5} show={String(reviews)} set={setReviews} />
                 <Slider label="Patients who agree to family testing" value={consent} min={0.3} max={1} step={0.05} show={`${Math.round(consent * 100)}%`} set={setConsent} />
-                <Slider label="Invited relatives who get tested" value={uptake} min={0.2} max={0.9} step={0.05} show={`${Math.round(uptake * 100)}%`} set={setUptake} />
+                <Slider label="Invited relatives who get tested" value={uptake} min={0.1} max={0.9} step={0.05} show={`${Math.round(uptake * 100)}%`} set={setUptake} />
               </div>
             </div>
             <div>

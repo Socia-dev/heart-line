@@ -109,7 +109,7 @@ def _pilot(reviews: int, consent: float, uptake: float):
 @app.get("/api/pilot")
 def pilot_projection(reviews_per_week: int = Query(pilot.REVIEWS_PER_WEEK, ge=5, le=60),
                      consent_rate: float = Query(simulate.CONSENT_RATE, ge=0.1, le=1.0),
-                     uptake: float = Query(simulate.BOOK_RATE, ge=0.1, le=1.0)):
+                     uptake: float = Query(pilot.UPTAKE, ge=0.1, le=1.0)):
     return _pilot(reviews_per_week, round(consent_rate, 2), round(uptake, 2))
 
 

@@ -124,4 +124,4 @@ If clinicians review 233 flagged people (the number DLCN 6 or more flags), how m
 
 The worklist cut-off flags 623 people and finds 83% of those with FH (78% to 87%); 42% of its flags are right (37% to 46%). Published models in real populations report 1% to 15% for that last figure. Bands: of people marked Very likely, 86% had FH; Likely, 41%; Possible, 13%.
 
-The 12-month projection finds 249 people by screening alone and 421 with family testing (412 to 431 across five runs): 0.69 new cases per confirmed patient. Published first-degree-only programmes report 0.80.
+The 12-month projection finds 249 people by screening alone and 379 with family testing (374 to 392 across five runs): 0.52 new cases per confirmed patient. It assumes 30% of invited relatives get tested, in line with recent trials (21% in IMPACT-FH, 30% in CATCH); the Programme page has a slider. Published first-degree-only programmes report 0.80 new cases per index patient.

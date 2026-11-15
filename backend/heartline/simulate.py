@@ -23,7 +23,7 @@ from .machine import Refusal
 from .store import audit, today
 
 DETECTION_SENSITIVITY = 0.95   # a genetic test finds the variant this often when one is there
-BOOK_RATE = 0.60               # invited relatives who book and attend
+BOOK_RATE = 0.60               # invited relatives who book and attend, in the scripted demo only
 CONSENT_RATE = 0.85            # used by the pilot projection only
 WELLCHILD_RATE = 0.70          # children tested at the visit they were flagged for
 NO_RESPONSE_AFTER = 28         # days

@@ -26,7 +26,7 @@ The linked-family model reads other people's records. That is its advantage and 
 
 ## 5. Only first-degree relatives are contacted
 
-Published programmes that go to second- and third-degree relatives find several times more cases per index patient. Heart Line's projection (0.69 new cases per confirmed patient) is in line with first-degree-only programmes (0.80) and well below the wider ones (3.65).
+Published programmes that go to second- and third-degree relatives find several times more cases per index patient. Heart Line's projection (0.52 new cases per confirmed patient at 30% uptake, 0.69 at 60%) is below first-degree-only programmes (0.80) and well below the wider ones (3.65).
 
 ## 6. The demo is scripted
 
