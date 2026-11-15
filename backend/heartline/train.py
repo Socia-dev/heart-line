@@ -32,7 +32,7 @@ from sklearn.metrics import (average_precision_score, brier_score_loss, precisio
                              roc_curve)
 from sklearn.model_selection import GroupKFold
 
-from . import dlcn, features
+from . import dlcn, features, reference
 from pathlib import Path
 
 from .config import DB_PATH, EVAL_PATH, SEED
@@ -292,6 +292,7 @@ def train(db_path=None, out_dir: Path | None = None, table: str = "scores", fold
         "model_version": MODEL_VERSION,
         "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "run": {"folds": folds, "sample": sample or 1.0, "quick": bool(sample and sample < 1)},
+        "realism": reference.realism(con, dl, n),
         "curves": curves,
         "population": {"people": int(n_people), "with_labs": int(n), "with_fh_with_labs": int(y.sum()),
                        "with_fh_total": int((truth > 0).sum())},

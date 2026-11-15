@@ -1601,3 +1601,16 @@ tr[aria-selected="true"] td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  rect.bar-in {
+    transform-box: fill-box;
+    transform-origin: bottom;
+    animation: bar-up 500ms var(--ease-out) var(--d, 0ms) both;
+  }
+}
+@keyframes bar-up {
+  from {
+    transform: scaleY(0.02);
+  }
+}

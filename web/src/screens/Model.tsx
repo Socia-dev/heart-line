@@ -1,6 +1,7 @@
 import { pct, range, useApi } from "../api";
 import Fold from "../components/Fold";
 import { Curves, Population } from "../components/ModelCharts";
+import Realism, { RealismData } from "../components/Realism";
 import Retrain from "../components/Retrain";
 import { LoadError, Loading } from "../components/State";
 
@@ -8,6 +9,7 @@ type At = { name: string; flagged: number; found: number; sensitivity: number; p
 type Metric = { name: string; auroc: number; auprc: number; auroc_ci: number[]; auprc_ci: number[] };
 type FairRow = { group: string; people: number; with_fh: number; small: boolean; sensitivity: number; sensitivity_ci: number[]; dlcn_sensitivity: number };
 type Evaluation = {
+  realism?: RealismData;
   curves?: Record<string, { roc: number[][]; pr: number[][]; point: { fpr: number; tpr: number; precision: number } }>;
   model_version: string;
   population: { people: number; with_labs: number; with_fh_with_labs: number; with_fh_total: number };
@@ -73,6 +75,14 @@ export default function Model() {
             better. On synthetic data.
           </p>
           <Curves curves={e.curves} k={e.matched_workload.flag_count} />
+        </section>
+      )}
+
+      {e.realism && (
+        <section className="card">
+          <h2>Is the synthetic data realistic?</h2>
+          <p className="muted">The synthetic population set beside published real-world figures. Where it does not match, it says so.</p>
+          <Realism r={e.realism} />
         </section>
       )}
 
