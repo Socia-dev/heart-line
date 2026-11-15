@@ -870,3 +870,61 @@ details.fold > .fold-body {
     min-height: 92vh;
   }
 }
+
+/* ---------------------------------------------------------------- how it works: lanes are people, time runs left to right */
+.flow {
+  position: relative;
+  font-size: 13px;
+  line-height: 18px;
+}
+.flow svg {
+  position: absolute;
+  inset: 0;
+}
+.flow-lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  padding-inline-start: 12px;
+  border-radius: var(--r);
+}
+.flow-lane.alt {
+  background: var(--g-100);
+}
+.flow-lane span {
+  width: 112px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.flow-step {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--g-300);
+  border-radius: var(--r);
+}
+.flow-step.strong {
+  background: var(--red-600);
+  border-color: var(--red-600);
+  color: #fff;
+  font-weight: 500;
+}
+.flow-note {
+  position: absolute;
+  margin: 0;
+  color: var(--ink-600);
+}
+.flow-note.red {
+  color: var(--red-700);
+  font-weight: 500;
+}
+
+button.link.inline {
+  display: inline;
+  margin: 0;
+  margin-inline-start: 8px;
+}

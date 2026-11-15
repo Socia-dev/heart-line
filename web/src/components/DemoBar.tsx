@@ -116,7 +116,17 @@ export default function DemoBar() {
                 <li key={x.step} className={x.done ? "done" : x === next ? "next" : ""}>
                   {x.done ? "Done: " : x === next ? "Next: " : ""}
                   {x.step}
-                  {x === next && <span className="muted"> (as {ROLES.find((r) => r.id === x.role)?.title.toLowerCase()})</span>}
+                  {x === next && x.role !== role && (
+                    <button
+                      className="link small inline"
+                      onClick={() => {
+                        setRole(x.role);
+                        go("#/");
+                      }}
+                    >
+                      Switch to the {ROLES.find((r) => r.id === x.role)?.title.toLowerCase()}
+                    </button>
+                  )}
                 </li>
               ))}
             </ol>

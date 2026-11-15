@@ -89,12 +89,12 @@ export default function App() {
   else if (role === "lead") screen = <Programme />;
   else screen = <Home />;
 
-  const active = ["families", "children", "model", "audit"].includes(section ?? "") ? section : "";
+  const active = ["families", "children", "model", "audit"].includes(section ?? "") ? section : section === "about" ? "none" : "";
   const me = ROLES.find((r) => r.id === role)!;
   return (
     <Boundary>
       <div className="banner" role="note">
-        <strong>Synthetic data. Not for clinical use.</strong> <a href="#/about">What is real and what is mocked</a>
+        <strong>Synthetic data. Not for clinical use.</strong> <a href="#/about">How it works and what is mocked</a>
       </div>
       <header className="top">
         <div className="wrap top-inner">
@@ -113,6 +113,9 @@ export default function App() {
                 {label}
               </a>
             ))}
+            <a href="#/about" className={section === "about" ? "on" : ""}>
+              How it works
+            </a>
           </nav>
           <span className="today">
             {me.name}, {me.title.toLowerCase()}
