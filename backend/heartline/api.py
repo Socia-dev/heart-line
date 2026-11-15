@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import cascade, features, fhir, live, machine, pilot, scoring, simulate, store, voice
+from . import cascade, features, fhir, live, machine, pilot, retrain, scoring, simulate, store, voice
 
 voice.load_env()
 from .config import EVAL_PATH, PREMATURE_AGE
@@ -196,6 +196,45 @@ def scatter(role: str = Depends(actor), con: sqlite3.Connection = Depends(db)):
         out["id"].append(r[0])
     return {**out, "bands": bands, "threshold": _evaluation().get("worklist_threshold", {}).get("threshold"),
             "label": "On synthetic data"}
+
+
+class RetrainIn(BaseModel):
+    quick: bool = False
+
+
+@app.get("/api/model/retrain")
+def retrain_state(role: str = Depends(actor)):
+    allow(role, "lead")
+    return retrain.state()
+
+
+@app.post("/api/model/retrain")
+def retrain_start(body: RetrainIn, role: str = Depends(actor)):
+    """Start a retrain in the background. The page polls GET for each fold as it finishes."""
+    allow(role, "lead")
+    return retrain.start(body.quick)
+
+
+def _swap_model():
+    live.reload_model()
+    _evaluation.cache_clear()
+    _pilot.cache_clear()
+    pilot._load.cache_clear()
+
+
+@app.post("/api/model/retrain/apply")
+def retrain_apply(role: str = Depends(actor)):
+    """Use the finished full run as the live model. Only ever on a person's click."""
+    allow(role, "lead")
+    out = retrain.apply(_swap_model)
+    con = store.connect(schema=False)
+    try:
+        store.audit(con, "lead", "model_replaced", "Model replaced after a retrain",
+                    detail={"seconds": (out.get("result") or {}).get("seconds")})
+        con.commit()
+    finally:
+        con.close()
+    return out
 
 
 @app.get("/api/evaluation")

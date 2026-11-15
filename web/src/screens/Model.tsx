@@ -1,6 +1,7 @@
 import { pct, range, useApi } from "../api";
 import Fold from "../components/Fold";
 import { Curves, Population } from "../components/ModelCharts";
+import Retrain from "../components/Retrain";
 import { LoadError, Loading } from "../components/State";
 
 type At = { name: string; flagged: number; found: number; sensitivity: number; ppv: number; sensitivity_ci: number[]; ppv_ci: number[] };
@@ -74,6 +75,15 @@ export default function Model() {
           <Curves curves={e.curves} k={e.matched_workload.flag_count} />
         </section>
       )}
+
+      <section className="card">
+        <h2>Retrain it here</h2>
+        <p className="muted">
+          This runs the real training: cross-validation grouped by family, calibration, then the same comparison as above. Each fold appears as it
+          finishes. Nothing changes for anyone until you choose to use the new model.
+        </p>
+        <Retrain current={e.metrics} />
+      </section>
 
       <section className="card">
         <h2>Everyone with a result</h2>
