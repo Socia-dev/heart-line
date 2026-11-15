@@ -3,7 +3,7 @@ import { ApiError, ROLES, Role, changed, fmtDate, go, post, setRole, useApi, use
 import { describe } from "./State";
 
 type Advance = Record<string, number | string>;
-type Summary = { today: string; story: { step: string; done: boolean; role: Role }[] };
+type Summary = { today: string };
 
 function tell(a: Advance) {
   const parts = [
@@ -19,12 +19,11 @@ function tell(a: Advance) {
 }
 
 // Presenter controls. Everything here is demo scaffolding; none of it would exist in a pilot.
-export default function DemoBar() {
+export default function DemoBar({ onGuide }: { onGuide: () => void }) {
   const role = useRole();
   const s = useApi<Summary>("/api/summary");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
 
   async function run(f: () => Promise<void>) {
     setBusy(true);
@@ -37,9 +36,6 @@ export default function DemoBar() {
       setBusy(false);
     }
   }
-  const story = s.data?.story ?? [];
-  const done = story.filter((x) => x.done).length;
-  const next = story.find((x) => !x.done);
 
   return (
     <div className="demobar">
@@ -101,36 +97,13 @@ export default function DemoBar() {
         >
           Reset
         </button>
-        {story.length > 0 && (
-          <button className="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>
-            Demo story, {done} of {story.length}
-          </button>
-        )}
+        <button className="primary" onClick={onGuide}>
+          Back to the guided demo
+        </button>
       </div>
-      {(msg || open) && (
+      {msg && (
         <div className="wrap demobar-more">
           {msg && <p className="small">{msg}</p>}
-          {open && (
-            <ol className="story small">
-              {story.map((x) => (
-                <li key={x.step} className={x.done ? "done" : x === next ? "next" : ""}>
-                  {x.done ? "Done: " : x === next ? "Next: " : ""}
-                  {x.step}
-                  {x === next && x.role !== role && (
-                    <button
-                      className="link small inline"
-                      onClick={() => {
-                        setRole(x.role);
-                        go("#/");
-                      }}
-                    >
-                      Switch to the {ROLES.find((r) => r.id === x.role)?.title.toLowerCase()}
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ol>
-          )}
         </div>
       )}
     </div>

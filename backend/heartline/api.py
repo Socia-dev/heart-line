@@ -174,10 +174,7 @@ QUEUES = {
         ("review", "To review", "c.status='flagged'"),
         ("results", "Results back", "(c.status='no_variant' OR (c.status IN ('confirmed_genetic','clinical_fh') "
                                     "AND c.consent IS NULL AND c.source<>'wellchild'))"),
-        ("waiting", "Waiting on the lab", "c.status='test_ordered'"),
-        ("done", "Confirmed patients", "c.status IN ('confirmed_genetic','clinical_fh') AND "
-                                       "(c.consent IS NOT NULL OR c.source='wellchild')"),
-        ("all", "All", "1=1"),
+        ("all", "Everyone", "1=1"),
     ],
     "coordinator": [
         ("start", "To start", "c.status IN ('confirmed_genetic','clinical_fh') AND c.consent=1 AND c.cascade_at IS NULL"),
@@ -523,6 +520,46 @@ def wellchild(role: str = Depends(actor), con: sqlite3.Connection = Depends(db))
 
 
 # ------------------------------------------------------------------ demo controls, audit, export
+
+@app.get("/api/demo/guide")
+def guide(con: sqlite3.Connection = Depends(db)):
+    """Where the guided demo stands, worked out from what has really happened. Demo scaffolding only."""
+    on = store.today(con)
+    c = con.execute("SELECT c.* FROM cases c JOIN labs l ON l.person_id=c.person_id WHERE l.source='live' "
+                    "ORDER BY c.id DESC LIMIT 1").fetchone()
+    out = {"step": "start", "person_id": None, "invite_token": None, "found_person_id": None, "today": on.isoformat()}
+    if c is None:
+        return out
+    out["person_id"] = c["person_id"]
+    s = c["status"]
+    if s == "flagged":
+        out["step"] = "review"
+    elif s == "test_ordered":
+        out["step"] = "wait_test"
+    elif s in ("dismissed", "no_variant") or c["consent"] == 0:
+        out["step"] = "stopped"
+    elif c["consent"] is None:
+        out["step"] = "consent"
+    elif not c["cascade_at"]:
+        out["step"] = "send"
+    else:
+        inv = con.execute("SELECT token FROM invitations WHERE case_id=? ORDER BY status='sent' DESC, id LIMIT 1",
+                          (c["id"],)).fetchone()
+        out["invite_token"] = inv["token"] if inv else None
+        found = con.execute("SELECT person_id FROM cases WHERE index_of=? ORDER BY source='cascade' DESC, id LIMIT 1",
+                            (c["id"],)).fetchone()
+        replied = con.execute("SELECT COUNT(*) FROM invitations WHERE case_id=? AND responded_at IS NOT NULL",
+                              (c["id"],)).fetchone()[0]
+        if found:
+            out["step"], out["found_person_id"] = "found", found["person_id"]
+        elif on.isoformat() == c["cascade_at"] and not replied and inv:
+            out["step"] = "relative"
+        elif (on - date.fromisoformat(c["cascade_at"])).days < 14:
+            out["step"] = "wait_family"
+        else:
+            out["step"] = "found"
+    return out
+
 
 @app.post("/api/simulate/new-result")
 def new_result(con: sqlite3.Connection = Depends(db)):

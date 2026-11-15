@@ -1,4 +1,4 @@
-import Flow from "../components/Flow";
+import Steps, { PEOPLE } from "../components/Steps";
 
 // How it works, who does what, and what is real. Linked from the header on every page.
 export default function About() {
@@ -13,8 +13,19 @@ export default function About() {
       </div>
       <section className="card">
         <h2>From one result to a whole family</h2>
-        <p className="muted">Each row is a person. Read left to right.</p>
-        <Flow />
+        <Steps />
+      </section>
+      <section className="card">
+        <h2>Who does what</h2>
+        <div className="people">
+          {PEOPLE.map((p) => (
+            <div key={p.id}>
+              <h3>{p.name}</h3>
+              <p>{p.job}</p>
+              <p className="small muted">Sees: {p.sees}</p>
+            </div>
+          ))}
+        </div>
       </section>
       <section className="card">
         <h2>What keeps it safe</h2>
@@ -48,21 +59,6 @@ export default function About() {
           <li>The model, its cross-validation, calibration and fairness checks, and the Dutch Lipid Clinic Network score.</li>
           <li>The FHIR R4 export format.</li>
         </ul>
-      </section>
-      <section className="card">
-        <h2>Who does what</h2>
-        <dl className="facts">
-          <dt>Lipid clinician</dt>
-          <dd>Reviews flags, orders the genetic test, tells the patient, asks about family testing.</dd>
-          <dt>Family coordinator</dt>
-          <dd>Sends invitations once the patient has agreed, and follows up. Sees relatives' results because they act on them.</dd>
-          <dt>Well-Child nurse</dt>
-          <dd>Adds a cholesterol test to a flagged child's visit. Sees the child and the test, nothing about the family.</dd>
-          <dt>Programme lead</dt>
-          <dd>Sees counts, the projection, model quality and the audit log. No patient names.</dd>
-          <dt>Invited relative</dt>
-          <dd>Sees their own invitation on their phone, in Arabic or English.</dd>
-        </dl>
       </section>
     </div>
   );

@@ -51,7 +51,7 @@ python -m unittest discover -s tests -t .
 
 ## The demo (about 3 minutes)
 
-The bar under the header holds the demo controls and the role switch. "Demo story" in that bar lists the steps and ticks them off as they really happen.
+Open the app and press **Start the guided demo**. A strip under the header then says who you are and what to press at each of eight steps, and rings the button. The steps below are what it walks you through. **Explore on my own** swaps the guide for a role switch and the raw demo controls.
 
 1. **As the clinician.** Press New lab result. A first cholesterol result arrives and is flagged. The patient page shows a band (Likely), the DLCN score beside it, and the reasons for and against. Order the genetic test.
 2. Press Advance two weeks. The variant is found. The page now gives the question to ask the patient and lists the relatives; untick anyone the patient does not want contacted. Press Patient agrees. The case is handed to the coordinator.

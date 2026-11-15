@@ -188,7 +188,8 @@ summary:focus-visible,
     padding-top: 24px;
   }
   .today {
-    display: none;
+    margin-inline-start: 0;
+    padding-bottom: 8px;
   }
   .table-wrap > table {
     min-width: 560px;
@@ -871,60 +872,108 @@ details.fold > .fold-body {
   }
 }
 
-/* ---------------------------------------------------------------- how it works: lanes are people, time runs left to right */
-.flow {
-  position: relative;
-  font-size: 13px;
-  line-height: 18px;
-}
-.flow svg {
-  position: absolute;
-  inset: 0;
-}
-.flow-lane {
-  position: absolute;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  padding-inline-start: 12px;
-  border-radius: var(--r);
-}
-.flow-lane.alt {
-  background: var(--g-100);
-}
-.flow-lane span {
-  width: 112px;
-  font-size: 14px;
-  font-weight: 700;
-}
-.flow-step {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  padding: 8px 10px;
-  background: #fff;
-  border: 1px solid var(--g-300);
-  border-radius: var(--r);
-}
-.flow-step.strong {
-  background: var(--red-600);
-  border-color: var(--red-600);
-  color: #fff;
-  font-weight: 500;
-}
-.flow-note {
-  position: absolute;
-  margin: 0;
-  color: var(--ink-600);
-}
-.flow-note.red {
-  color: var(--red-700);
-  font-weight: 500;
-}
-
 button.link.inline {
   display: inline;
   margin: 0;
   margin-inline-start: 8px;
+}
+
+/* ---------------------------------------------------------------- guided demo */
+.guide {
+  background: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.guide-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 32px;
+  flex-wrap: wrap;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+.guide-text {
+  flex: 1 1 420px;
+}
+.guide-text p {
+  margin: 2px 0 0;
+  font-size: 18px;
+  line-height: 28px;
+}
+.guide-actions {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+.guide-actions button.link {
+  margin: 0;
+  display: inline;
+  font-size: 14px;
+}
+/* In the guided demo, the one button to press on the page is ringed. */
+.guided .next button.primary {
+  outline: 2px solid var(--red-600);
+  outline-offset: 3px;
+}
+h1.display {
+  font-size: 48px;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  margin-bottom: 12px;
+}
+.welcome-head {
+  padding: 24px 0 8px;
+}
+.steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.steps li {
+  background: var(--g-100);
+  border-radius: var(--r);
+  padding: 16px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.steps li:last-child {
+  background: var(--red-600);
+  color: #fff;
+}
+.steps strong {
+  font-size: 18px;
+  line-height: 24px;
+}
+.steps span {
+  font-size: 14px;
+  line-height: 20px;
+}
+.people {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px 32px;
+}
+.people p {
+  margin: 0 0 4px;
+}
+@media (max-width: 900px) {
+  .steps {
+    grid-template-columns: 1fr;
+  }
+  h1.display {
+    font-size: 30px;
+    line-height: 36px;
+  }
+  .guide {
+    position: static;
+  }
+  .guide-actions {
+    justify-items: start;
+  }
 }

@@ -108,7 +108,7 @@ export default function Patient({ id }: { id: number }) {
   const timeline = decisionsOnly ? data.timeline.filter((t) => t.decision) : data.timeline;
   const forReasons = score?.reasons.filter((r) => r.direction === "for") ?? [];
   const against = score?.reasons.filter((r) => r.direction === "against") ?? [];
-  const top = Math.max(0.001, ...(score?.reasons.map((r) => r.weight) ?? []));
+  const top = Math.max(0.001, ...against.map((r) => r.weight));
 
   return (
     <div className="stack">
@@ -156,39 +156,21 @@ export default function Patient({ id }: { id: number }) {
         {score ? (
           <section className="card">
             <h2>Why flagged</h2>
-            <div className="grid g2 scores">
-              <div>
-                <div className="small muted">Heart Line model, added by this tool</div>
-                <div className={`band big ${score.band.replace(" ", "-").toLowerCase()}`}>{score.band}</div>
-                {score.flagged && score.band_rate != null && (
-                  <div className="small muted">About {Math.round(score.band_rate * 10)} in 10 people in this band had FH, in synthetic data.</div>
-                )}
-              </div>
-              <div>
-                <div className="small muted">DLCN score, the standard clinical score</div>
-                <div className="band big plain">
-                  {score.dlcn_total} <span className="small">{score.dlcn_band.toLowerCase()}</span>
-                </div>
-                <div className="small muted">
-                  {score.dlcn_linked_total > score.dlcn_total
-                    ? `${score.dlcn_linked_total} if relatives' records are counted as family history.`
-                    : "From what is written in this chart."}
-                </div>
-              </div>
-            </div>
-            {forReasons.length > 0 && (
-              <>
-                <h3 style={{ marginTop: 14 }}>Points towards FH</h3>
-                <Reasons items={forReasons} top={top} />
-              </>
+            <div className={`band big ${score.band.replace(" ", "-").toLowerCase()}`}>{score.band} FH</div>
+            {forReasons.length > 0 ? (
+              <ul className="reasons">
+                {forReasons.map((r) => (
+                  <li key={r.text}>{r.text}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">No strong signals in the record.</p>
             )}
-            {against.length > 0 && (
-              <>
-                <h3 style={{ marginTop: 12 }}>Points away from it</h3>
-                <Reasons items={against} top={top} against />
-              </>
+            {score.flagged && score.band_rate != null && (
+              <p className="small muted" style={{ margin: "12px 0 0" }}>
+                About {Math.round(score.band_rate * 10)} in 10 people with this rating had FH, in synthetic data. A suggestion, not a diagnosis.
+              </p>
             )}
-            {forReasons.length + against.length === 0 && <p className="muted">No strong signals in the record.</p>}
           </section>
         ) : (
           <section className="card">
@@ -250,8 +232,20 @@ export default function Patient({ id }: { id: number }) {
         </Fold>
 
         {score && (
-          <Fold title="Score details" note={`Model ${pct(score.calibrated)}, DLCN ${score.dlcn_total}`}>
-            <h3>Dutch Lipid Clinic Network score</h3>
+          <Fold title="Score details" note={`DLCN ${score.dlcn_total}, and what points away`}>
+            {against.length > 0 && (
+              <>
+                <h3>Points away from FH</h3>
+                <Reasons items={against} top={top} against />
+              </>
+            )}
+            <h3 style={{ marginTop: against.length ? 16 : 0 }}>
+              Dutch Lipid Clinic Network score: {score.dlcn_total}, {score.dlcn_band.toLowerCase()}
+            </h3>
+            <p className="small muted">
+              The standard clinical score, from what is written in this chart.
+              {score.dlcn_linked_total > score.dlcn_total && ` It would be ${score.dlcn_linked_total} if relatives' records counted as family history.`}
+            </p>
             {score.dlcn_items.length ? (
               <table className="small">
                 <tbody>

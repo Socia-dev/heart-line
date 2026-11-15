@@ -1,6 +1,7 @@
 import { Component, ReactNode, useEffect, useState } from "react";
-import { ROLES, Role, useRole } from "./api";
+import { ROLES, Role, changed, useApi, useRole } from "./api";
 import DemoBar from "./components/DemoBar";
+import Guide, { GuideState, startDemo } from "./components/Guide";
 import About from "./screens/About";
 import Audit from "./screens/Audit";
 import Children from "./screens/Children";
@@ -10,6 +11,7 @@ import Invite, { InvitePreview } from "./screens/Invite";
 import Model from "./screens/Model";
 import Patient from "./screens/Patient";
 import Programme from "./screens/Programme";
+import Welcome from "./screens/Welcome";
 
 function useRoute() {
   const [hash, setHash] = useState(window.location.hash || "#/");
@@ -24,7 +26,7 @@ function useRoute() {
   return hash.replace(/^#/, "").split("?")[0].split("/").filter(Boolean);
 }
 
-// Each role has its own home and only the pages it needs.
+// Each role has its own home and only the pages it needs. Shown when exploring freely.
 const NAV: Record<Role, [string, string][]> = {
   clinician: [["", "My patients"]],
   coordinator: [
@@ -59,9 +61,29 @@ class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   }
 }
 
+function readMode(): "guide" | "free" {
+  try {
+    return localStorage.getItem("heartline-mode") === "free" ? "free" : "guide";
+  } catch {
+    return "guide";
+  }
+}
+
 export default function App() {
   const [section, arg] = useRoute();
   const role = useRole();
+  const [mode, setModeState] = useState(readMode);
+  const [final, setFinal] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const guide = useApi<GuideState>("/api/demo/guide");
+  const setMode = (m: "guide" | "free") => {
+    setModeState(m);
+    try {
+      localStorage.setItem("heartline-mode", m);
+    } catch {
+      /* ignore */
+    }
+  };
 
   // The invited relative's page stands alone: no staff navigation, no demo controls.
   if (section === "i") {
@@ -77,8 +99,22 @@ export default function App() {
     );
   }
 
+  const guided = mode === "guide";
+  const g = guide.data;
+  const welcome = guided && g?.step === "start" && !section;
+  const start = async () => {
+    setStarting(true);
+    try {
+      await startDemo();
+      changed();
+    } finally {
+      setStarting(false);
+    }
+  };
+
   let screen: ReactNode;
-  if (section === "patient") screen = <Patient id={Number(arg)} />;
+  if (welcome) screen = <Welcome start={start} busy={starting} free={() => setMode("free")} />;
+  else if (section === "patient") screen = <Patient id={Number(arg)} />;
   else if (section === "invite") screen = <InvitePreview token={arg} />;
   else if (section === "about") screen = <About />;
   else if (section === "model") screen = <Model />;
@@ -93,9 +129,6 @@ export default function App() {
   const me = ROLES.find((r) => r.id === role)!;
   return (
     <Boundary>
-      <div className="banner" role="note">
-        <strong>Synthetic data. Not for clinical use.</strong> <a href="#/about">How it works and what is mocked</a>
-      </div>
       <header className="top">
         <div className="wrap top-inner">
           <a className="brand" href="#/">
@@ -108,22 +141,25 @@ export default function App() {
             Heart Line
           </a>
           <nav className="nav">
-            {NAV[role].map(([href, label]) => (
-              <a key={href} href={`#/${href}`} className={active === href ? "on" : ""}>
-                {label}
-              </a>
-            ))}
+            {!guided &&
+              NAV[role].map(([href, label]) => (
+                <a key={href} href={`#/${href}`} className={active === href ? "on" : ""}>
+                  {label}
+                </a>
+              ))}
             <a href="#/about" className={section === "about" ? "on" : ""}>
               How it works
             </a>
           </nav>
-          <span className="today">
-            {me.name}, {me.title.toLowerCase()}
-          </span>
+          <span className="today">{guided ? "Synthetic data. Not for clinical use." : `Viewing as ${me.name}, ${me.title.toLowerCase()}. Synthetic data.`}</span>
         </div>
       </header>
-      <DemoBar />
-      <main className="wrap main" key={role}>
+      {guided ? (
+        g && !welcome && <Guide g={g} final={final} setFinal={setFinal} onFree={() => setMode("free")} />
+      ) : (
+        <DemoBar onGuide={() => setMode("guide")} />
+      )}
+      <main className={`wrap main ${guided ? "guided" : ""}`} key={role}>
         {screen}
       </main>
     </Boundary>

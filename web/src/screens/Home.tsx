@@ -65,7 +65,6 @@ export default function Home() {
                   <tr>
                     <th>{data.tab === "phone" ? "Relative" : "Patient"}</th>
                     <th>Why it is here</th>
-                    {role === "clinician" && <th>Model says</th>}
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -78,8 +77,10 @@ export default function Home() {
                           {r.age}, {r.sex === "M" ? "male" : "female"}
                         </div>
                       </td>
-                      <td className="small">{r.why}</td>
-                      {role === "clinician" && <td>{r.band && <span className={`band ${r.band.replace(" ", "-").toLowerCase()}`}>{r.band}</span>}</td>}
+                      <td>
+                        {r.band && r.status === "flagged" && <strong>{r.band}. </strong>}
+                        {r.why}
+                      </td>
                       <td>
                         <span className={`pill ${r.status}`}>{r.status_label}</span>
                       </td>
