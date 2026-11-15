@@ -54,7 +54,17 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
   // Remember each relative's last status, so a relative whose status just changed can pulse once.
   const seen = useRef<Map<number, string> | null>(null);
   const changedIds = new Set<number>();
-  if (seen.current) for (const n of nodes) if (seen.current.has(n.id) && seen.current.get(n.id) !== n.status) changedIds.add(n.id);
+  const newIds = new Set<number>();
+  const sentTo = new Set<number>(); // relatives who were just invited or flagged: an invitation flies to them
+  if (seen.current)
+    for (const n of nodes) {
+      const was = seen.current.get(n.id);
+      if (was === undefined) newIds.add(n.id);
+      else if (was !== n.status) {
+        changedIds.add(n.id);
+        if (was === "unknown" && ["invited", "wellchild", "booked", "call_requested"].includes(n.status)) sentTo.add(n.id);
+      }
+    }
   useEffect(() => {
     seen.current = new Map(nodes.map((n) => [n.id, n.status]));
   }, [nodes]);
@@ -176,8 +186,17 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
           return (
             <g
               key={p.key}
-              className={[clickable ? "tree-node" : "", firstPaint ? "tree-in" : "", p.node && changedIds.has(p.node.id) ? "tree-changed" : ""].join(" ")}
-              style={{ "--d": `${(p.gen - gMin) * 110}ms`, transformOrigin: `${cx(p.x)}px ${cy(p.gen) + NH / 2}px` } as React.CSSProperties}
+              className={[
+                clickable ? "tree-node" : "",
+                firstPaint || (p.node && newIds.has(p.node.id)) ? "tree-in" : "",
+                p.node && changedIds.has(p.node.id) ? (sentTo.has(p.node.id) ? "tree-changed late" : "tree-changed") : "",
+              ].join(" ")}
+              style={
+                {
+                  "--d": firstPaint ? `${(p.gen - gMin) * 110}ms` : "350ms",
+                  transformOrigin: `${cx(p.x)}px ${cy(p.gen) + NH / 2}px`,
+                } as React.CSSProperties
+              }
               onClick={clickable ? () => onOpen(p.node!.id) : undefined}
             >
               <title>{p.node ? `${p.node.name}: ${st.label}` : lines.join(" ")}</title>
@@ -199,6 +218,25 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
               <text x={x + NW / 2} y={y + 53} textAnchor="middle" fontSize="12" fill={st.ink ?? "#463c3f"}>
                 {lines[2]}
               </text>
+            </g>
+          );
+        })}
+        {[...sentTo].map((id, i) => {
+          // An invitation travels from the patient to each relative who was just contacted.
+          const from = placed.find((p) => p.status === "index");
+          const to = placed.find((p) => p.node?.id === id);
+          if (!from || !to) return null;
+          const v = {
+            "--x1": `${cx(from.x)}px`,
+            "--y1": `${cy(from.gen) + NH / 2}px`,
+            "--x2": `${cx(to.x)}px`,
+            "--y2": `${cy(to.gen) + NH / 2}px`,
+            "--d": `${i * 90}ms`,
+          } as React.CSSProperties;
+          return (
+            <g key={`fly${id}`} className="flyer" style={v} aria-hidden="true">
+              <rect x={-9} y={-6} width={18} height={12} rx={2} fill="#9f1239" />
+              <path d="M-9,-6 L0,1 L9,-6" fill="none" stroke="#fff" strokeWidth="1.5" />
             </g>
           );
         })}

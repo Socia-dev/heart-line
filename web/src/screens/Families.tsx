@@ -1,4 +1,6 @@
 import { Brief, fmtDate, useApi } from "../api";
+import ChainGraph from "../components/ChainGraph";
+import Fold from "../components/Fold";
 import { Empty, LoadError, Loading } from "../components/State";
 
 type Inv = { id: number; token: string; status: string; lang: string; sent_at: string; slot: string | null; relative: Brief; via: Brief; message: string };
@@ -45,11 +47,17 @@ export default function Families() {
       <section className="card">
         <h2>How each patient led to the next</h2>
         {roots.length ? (
+          <>
+            <p className="muted small">Red is the patient found by screening. Each line is "found through". New links draw in as results come back.</p>
+            <ChainGraph nodes={data.families} />
+            <Fold title="The same, as a list">
           <ul className="chain">
             {roots.map((r) => (
               <ChainNode key={r.case_id} c={r} all={data.families} />
             ))}
           </ul>
+            </Fold>
+          </>
         ) : (
           <Empty title="No families yet">Family testing starts once a clinician records a patient's consent. It then appears under To start on your home page.</Empty>
         )}

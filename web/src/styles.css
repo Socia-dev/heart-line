@@ -1537,3 +1537,36 @@ tr[aria-selected="true"] td {
 [dir="rtl"] .listen-track span {
   transform-origin: right center;
 }
+
+/* An invitation flies from the patient to a relative, then the relative's colour changes */
+.flyer {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .flyer {
+    animation: fly 900ms var(--ease-out) var(--d, 0ms) both;
+  }
+  .tree-changed.late {
+    animation-delay: 750ms;
+  }
+  .tree-changed.late rect {
+    transition-delay: 650ms;
+  }
+}
+@keyframes fly {
+  0% {
+    opacity: 0;
+    transform: translate(var(--x1), var(--y1)) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+    transform: translate(var(--x2), var(--y2)) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--x2), var(--y2)) scale(1);
+  }
+}
