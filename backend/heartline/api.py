@@ -8,6 +8,8 @@ below). The `truth` table is never read here.
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import sqlite3
@@ -18,11 +20,11 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import cascade, fhir, machine, pilot, simulate, store
+from . import cascade, fhir, live, machine, pilot, simulate, store
 from .config import EVAL_PATH, PREMATURE_AGE
 from .features import reason_texts
 from .machine import CONFIRMED, OPEN, Refusal
@@ -67,6 +69,7 @@ def allow(role: str, *roles: str):
 @app.on_event("startup")
 def startup():
     threading.Thread(target=simulate.warm, daemon=True).start()  # so the first demo click is quick
+    threading.Thread(target=live.warm, daemon=True).start()
     con = store.connect()
     try:
         cols = {r[1] for r in con.execute("PRAGMA table_info(scores)")}
@@ -520,6 +523,89 @@ def wellchild(role: str = Depends(actor), con: sqlite3.Connection = Depends(db))
 
 
 # ------------------------------------------------------------------ demo controls, audit, export
+
+# ------------------------------------------------------------------ score any result
+
+class ScoreIn(BaseModel):
+    panel: dict | None = None
+    context: dict | None = None
+    person_id: int | None = None
+    overrides: dict | None = None
+
+
+def _bad_input(e: live.BadInput):
+    raise Refusal("validation", f"bad_{e.field}", e.message)
+
+
+@app.post("/api/score")
+def score(body: ScoreIn, x_demo_role: str | None = Header(None), con: sqlite3.Connection = Depends(db)):
+    """Score numbers typed in by hand (own-record model), or a person in the population with some values
+    changed (linked-family model). Stores nothing."""
+    try:
+        if body.person_id is not None:
+            allow(actor(x_demo_role), "clinician", "coordinator")
+            res, _ = live.score_record(con, body.person_id, body.overrides, "Exploration only. The record is unchanged.")
+            return res
+        return live.score_input(body.panel or {}, body.context)
+    except live.BadInput as e:
+        _bad_input(e)
+
+
+@app.get("/api/patients/{pid}/explain")
+def explain(pid: int, role: str = Depends(actor), con: sqlite3.Connection = Depends(db)):
+    """The why-chart and the starting values for the what-if panel."""
+    allow(role, "clinician", "coordinator")
+    try:
+        res, _ = live.score_record(con, pid, None, "Already on the worklist" if cascade.case_for_person(con, pid) else None)
+        return {**res, "inputs": live.record_inputs(con, pid)}
+    except live.BadInput as e:
+        _bad_input(e)
+
+
+SAMPLE_CSV = """ldl,tc,hdl,tg,age,sex,statin,early_cad,xanthoma,arcus,fhx_cad,fhx_ldl
+7.2,9.1,1.2,1.4,34,M,none,no,no,no,yes,no
+3.1,5.0,1.3,1.2,52,F,none,no,no,no,no,no
+4.4,6.6,1.0,2.1,61,M,moderate,yes,no,no,no,no
+5.6,7.8,1.4,1.1,28,F,none,no,no,yes,no,yes
+9.4,11.5,1.1,1.6,19,M,none,no,yes,no,yes,yes
+"""
+YES = {"yes", "y", "true", "1"}
+MAX_ROWS = 500
+
+
+@app.get("/api/score/sample.csv")
+def sample_csv():
+    return Response(SAMPLE_CSV, media_type="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=heartline-sample.csv"})
+
+
+class CsvIn(BaseModel):
+    text: str
+    unit: str = "mmol"
+
+
+@app.post("/api/score/csv")
+def score_csv(body: CsvIn):
+    """Score every row of a CSV. One bad row does not stop the others. Stores nothing."""
+    rows = list(csv.DictReader(io.StringIO(body.text.strip())))
+    if not rows:
+        raise Refusal("validation", "empty_csv", "The file has no rows. The first line should be the column names.")
+    if "ldl" not in {k.strip().lower() for k in rows[0]}:
+        raise Refusal("validation", "no_ldl_column", "The file needs an ldl column. Download the sample to see the layout.")
+    if len(rows) > MAX_ROWS:
+        raise Refusal("validation", "too_many_rows", f"Up to {MAX_ROWS} rows at a time.")
+    out = []
+    for i, raw in enumerate(rows, start=1):
+        r = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
+        try:
+            res = live.score_input({**{k: r.get(k) for k in ("ldl", "tc", "hdl", "tg")}, "unit": body.unit}, {
+                "age": r.get("age") or None, "sex": r.get("sex") or "F", "statin": (r.get("statin") or "none").lower(),
+                **{k: r.get(k, "").lower() in YES for k in ("early_cad", "xanthoma", "arcus", "fhx_cad", "fhx_ldl")}})
+            out.append({"row": i, "input": r, "result": res})
+        except live.BadInput as e:
+            out.append({"row": i, "input": r, "error": e.message})
+    return {"rows": out, "scored": sum("result" in x for x in out), "failed": sum("error" in x for x in out)}
+
 
 @app.get("/api/demo/guide")
 def guide(con: sqlite3.Connection = Depends(db)):

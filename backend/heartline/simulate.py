@@ -11,17 +11,15 @@ from __future__ import annotations
 
 import json
 import random
+import time
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 
-import joblib
 import numpy as np
-import pandas as pd
 
-from . import cascade, dlcn, features, machine, store
-from .config import DB_PATH, LDL_P95_ADULT, LDL_P95_CHILD, MODEL_PATH, SEED
+from . import cascade, dlcn, live, machine, store
+from .config import DB_PATH, LDL_P95_ADULT, LDL_P95_CHILD, SEED
 from .machine import Refusal
-from .scoring import band_for
 from .store import audit, today
 
 DETECTION_SENSITIVITY = 0.95   # a genetic test finds the variant this often when one is there
@@ -130,16 +128,6 @@ def advance(con, weeks: int = 2) -> dict:
 
 # ------------------------------------------------------------------ a new result arrives
 
-_MODEL = None
-
-
-def _model():
-    global _MODEL
-    if _MODEL is None:
-        _MODEL = joblib.load(MODEL_PATH)
-    return _MODEL
-
-
 @lru_cache(maxsize=4)
 def _demo_order(db: str) -> tuple[int, ...]:
     """Synthetic carriers who make a good demo patient, best first. Chosen once per database.
@@ -195,34 +183,18 @@ def _candidate(con) -> int:
 
 
 def score_person(con, pid: int) -> dict:
-    """Score one person live with the final model, calibrate, and store the result."""
-    m = _model()
-    ids = [pid] + [r["id"] for r, _ in store.first_degree(con, pid, include_deceased=True)]
-    q = ",".join("?" * len(ids))
-    people = pd.read_sql(f"SELECT * FROM people WHERE id IN ({q})", con, params=ids)
-    labs = pd.read_sql(f"SELECT person_id, date, ldl, tc, hdl, tg, on_statin FROM labs WHERE person_id IN ({q})", con,
-                       params=ids)
-    row = features.build_from(people, labs, only_with_labs=False).loc[pid]
-    x = row[m["features"]].to_numpy(dtype=float).reshape(1, -1)
-    prob = float(m["model"].predict_proba(x)[0, 1])
-    cal = float(m["calibrator"].predict([prob])[0])
-    reasons = features.top_reasons(row, np.asarray(m["model"].booster_.predict(x, pred_contrib=True)[0]), m["features"])
-
-    def score(linked: bool) -> dict:
-        return dlcn.score(
-            ldl_untreated=row["max_ldl_corr"], premature_cad=bool(row["early_cad"]), xanthoma=bool(row["xanthoma"]),
-            arcus_under_45=bool(row["arcus_u45"]),
-            fhx_premature_cad=bool(row["fhx_cad"]) or (linked and bool(row["rel_early_cad"])),
-            fhx_high_ldl=bool(row["fhx_ldl"]) or (linked and row["rel_n_high_ldl"] > 0))
-
-    d = score(False)
-    flagged = prob >= m["threshold"]
-    band = band_for(flagged, cal)
+    """Score one person live with the final linked-family model, and store the result."""
+    res, row = live.score_record(con, pid, worklist_text="pending")
+    linked = dlcn.score(
+        ldl_untreated=row["max_ldl_corr"], premature_cad=bool(row["early_cad"]), xanthoma=bool(row["xanthoma"]),
+        arcus_under_45=bool(row["arcus_u45"]), fhx_premature_cad=bool(row["fhx_cad"]) or bool(row["rel_early_cad"]),
+        fhx_high_ldl=bool(row["fhx_ldl"]) or row["rel_n_high_ldl"] > 0)
+    d = res["dlcn"]
     con.execute(f"INSERT OR REPLACE INTO scores VALUES ({','.join('?' * 13)})",
-                (pid, d["total"], d["band"], json.dumps(d["items"]), score(True)["total"], None, prob, cal, band,
-                 json.dumps(reasons), int(flagged), m["version"],
+                (pid, d["total"], d["band"], json.dumps(d["items"]), linked["total"], None, res["prob"], res["calibrated"],
+                 res["band"], json.dumps(res["reasons"]), int(res["flagged"]), live.model()["version"],
                  datetime.now(timezone.utc).isoformat(timespec="seconds")))
-    return {"prob": prob, "calibrated": cal, "band": band, "flagged": bool(flagged), "reasons": reasons, "dlcn": d}
+    return res
 
 
 def ingest_new_result(con) -> dict:
@@ -237,13 +209,22 @@ def ingest_new_result(con) -> dict:
     ldl = round(t["true_ldl"] * factor * float(np.exp(r.gauss(0, 0.05))), 2)
     hdl = round(max(0.6, r.gauss(1.35 if p["sex"] == "F" else 1.15, 0.2)), 2)
     tg = round(float(np.exp(r.gauss(np.log(1.3), 0.3))), 2)
+    t0 = time.perf_counter()
     con.execute("INSERT INTO labs (person_id, date, ldl, tc, hdl, tg, on_statin, source) VALUES (?,?,?,?,?,?,?,'live')",
                 (pid, now.isoformat(), ldl, round(ldl + hdl + tg / 2.2, 2), hdl, tg, int(on)))
+    received_ms = round((time.perf_counter() - t0) * 1000, 1)
     audit(con, machine.LAB, "lab_result", "New cholesterol result received", person_id=pid,
           actor="Lab interface (mock)", detail={"ldl_mmol_l": ldl})
     s = score_person(con, pid)
+    t0 = time.perf_counter()
     cid = None
     if s["flagged"]:
         cid = cascade.new_case(con, pid, "detection", "flagged", detail={"band": s["band"]})
     con.commit()
+    # The lab write and the worklist write are timed here; the stages in between come from live.py.
+    s["stages"][0].update(output=f"LDL {ldl:.1f} mmol/L from the lab", ms=received_ms)
+    s["stages"][-1].update(title="Added to worklist" if cid else "Worklist",
+                           output="Added to the clinician's list" if cid else "Not flagged, not added",
+                           ms=round((time.perf_counter() - t0) * 1000, 1))
+    s["total_ms"] = round(sum(x["ms"] for x in s["stages"]), 1)
     return {"person_id": pid, "case_id": cid, "ldl": ldl, **s}

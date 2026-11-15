@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 import unittest
 
@@ -85,9 +86,11 @@ class PrivacyTest(unittest.TestCase):
             self.assertNotIn(index["id"], [v for v in body.values() if isinstance(v, int)])
             for w in CLINICAL_WORDS:
                 self.assertNotIn(w.lower(), r.text.lower(), w)
-            # The SMS text itself is held to the same rule.
+            # The SMS text itself is held to the same rule. The link is random letters, so it is left out:
+            # a token that happens to contain "fh" was the cause of an old intermittent failure.
+            words = re.sub(r"\S*/i/\S+", "", i["message"]).lower()
             for w in CLINICAL_WORDS + [index["family"]]:
-                self.assertNotIn(w.lower(), i["message"].lower(), w)
+                self.assertNotIn(w.lower(), words, w)
 
     def test_clinician_sees_contact_status_but_not_relatives_results(self):
         """A relative's result follows the relative. The index patient's clinician sees whether

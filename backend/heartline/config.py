@@ -3,10 +3,15 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
+# HEARTLINE_DATA moves the whole data folder (database, model, evaluation, voice cache), so a test
+# copy can run beside the main demo. HEARTLINE_DB still overrides the database file alone.
+DATA = Path(os.environ.get("HEARTLINE_DATA", ROOT / "data"))
 DB_PATH = Path(os.environ.get("HEARTLINE_DB", DATA / "heartline.db"))
 MODEL_PATH = DATA / "model.joblib"
 EVAL_PATH = DATA / "evaluation.json"
+CANDIDATE = DATA / "candidate"   # a retrain writes here until someone chooses to use it
+VOICE_CACHE = DATA / "voice"
+ENV_PATH = ROOT / ".env"
 
 # Everything in the synthetic world is dated relative to this day.
 REF_DATE = date(2026, 11, 15)

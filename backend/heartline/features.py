@@ -25,9 +25,11 @@ FEATURES_B = FEATURES_A + FEATURES_FAMILY
 REF = pd.Timestamp(REF_DATE)
 
 
-def load(con: sqlite3.Connection) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load(con: sqlite3.Connection, history_only: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """history_only leaves out results added live during a demo, so training never learns from them."""
     people = pd.read_sql("SELECT * FROM people", con)
-    labs = pd.read_sql("SELECT person_id, date, ldl, tc, hdl, tg, on_statin FROM labs", con)
+    where = " WHERE source IS NULL OR source<>'live'" if history_only else ""
+    labs = pd.read_sql(f"SELECT person_id, date, ldl, tc, hdl, tg, on_statin FROM labs{where}", con)
     return people, labs
 
 
@@ -63,9 +65,9 @@ def _lab_summary(people: pd.DataFrame, labs: pd.DataFrame) -> pd.DataFrame:
     })
 
 
-def build(con: sqlite3.Connection, only_with_labs: bool = True) -> pd.DataFrame:
+def build(con: sqlite3.Connection, only_with_labs: bool = True, history_only: bool = False) -> pd.DataFrame:
     """Feature table indexed by person id. Includes clan_id, sex and group for splitting and fairness."""
-    people, labs = load(con)
+    people, labs = load(con, history_only)
     return build_from(people, labs, only_with_labs)
 
 

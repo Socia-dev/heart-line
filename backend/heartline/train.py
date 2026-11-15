@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 import warnings
 from datetime import datetime, timezone
 
@@ -27,11 +28,14 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
-from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
+from sklearn.metrics import (average_precision_score, brier_score_loss, precision_recall_curve, roc_auc_score,
+                             roc_curve)
 from sklearn.model_selection import GroupKFold
 
 from . import dlcn, features
-from .config import DB_PATH, EVAL_PATH, MODEL_PATH, SEED
+from pathlib import Path
+
+from .config import DB_PATH, EVAL_PATH, SEED
 from .scoring import BANDS, MODEL_VERSION, NOT_FLAGGED, band_for
 
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
@@ -119,11 +123,13 @@ def age_band(a: float) -> str:
     return "60 and over"
 
 
-def cross_validate(X: pd.DataFrame, y: np.ndarray, groups: np.ndarray, cols: list[str]):
+def cross_validate(X: pd.DataFrame, y: np.ndarray, groups: np.ndarray, cols: list[str], folds: int = 5,
+                   progress=None, label: str = ""):
     """Outer folds give honest raw scores. Inner folds give the calibrator its training data."""
     raw, cal, fold_of = np.zeros(len(X)), np.zeros(len(X)), np.zeros(len(X), dtype=int)
     contrib = np.zeros((len(X), len(cols) + 1))
-    for fold, (tr, te) in enumerate(GroupKFold(n_splits=5).split(X, y, groups)):
+    for fold, (tr, te) in enumerate(GroupKFold(n_splits=folds).split(X, y, groups)):
+        t0 = time.perf_counter()
         Xtr, ytr = X.iloc[tr][cols], y[tr]
         inner = np.zeros(len(tr))
         for itr, ite in GroupKFold(n_splits=3).split(Xtr, ytr, groups[tr]):
@@ -134,23 +140,52 @@ def cross_validate(X: pd.DataFrame, y: np.ndarray, groups: np.ndarray, cols: lis
         cal[te] = iso.predict(raw[te])
         contrib[te] = m.booster_.predict(X.iloc[te][cols].to_numpy(), pred_contrib=True)
         fold_of[te] = fold
+        if progress:
+            yt = y[te]
+            progress({"kind": "fold", "model": label, "fold": fold + 1, "folds": folds, "people": int(len(te)),
+                      "with_fh": int(yt.sum()),
+                      "auroc": float(roc_auc_score(yt, raw[te])) if 0 < yt.sum() < len(yt) else None,
+                      "auprc": float(average_precision_score(yt, raw[te])) if yt.sum() else None,
+                      "seconds": round(time.perf_counter() - t0, 2)})
     return raw, cal, contrib, fold_of
 
 
-def main():
+def curve_points(y: np.ndarray, s: np.ndarray, n: int = 120) -> dict:
+    """ROC and precision-recall curves, thinned to about n points each for drawing."""
+    fpr, tpr, _ = roc_curve(y, s)
+    prec, rec, _ = precision_recall_curve(y, s)
+
+    def thin(a, b):
+        idx = np.unique(np.linspace(0, len(a) - 1, min(n, len(a))).astype(int))
+        return [[round(float(a[i]), 4), round(float(b[i]), 4)] for i in idx]
+    return {"roc": thin(fpr, tpr), "pr": thin(rec, prec)}
+
+
+def train(db_path=None, out_dir: Path | None = None, table: str = "scores", folds: int = 5,
+          sample: float | None = None, progress=None) -> dict:
+    """Train, evaluate and score. Writes model.joblib and evaluation.json to out_dir and the scores to
+    `table`. A quick run (sample < 1) uses a share of families and is labelled as such."""
+    started = time.perf_counter()
+    out_dir = Path(out_dir or EVAL_PATH.parent)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    say = progress or (lambda e: print(e.get("text") or e))
     rng = np.random.default_rng(SEED)
-    con = sqlite3.connect(DB_PATH)
-    X = features.build(con)
+    con = sqlite3.connect(db_path or DB_PATH)
+    say({"kind": "stage", "text": "Building features from the records"})
+    X = features.build(con, history_only=True)
+    if sample and sample < 1:
+        clans = X["clan_id"].unique()
+        keep = set(np.random.default_rng(SEED).choice(clans, int(len(clans) * sample), replace=False))
+        X = X[X["clan_id"].isin(keep)]
     truth = pd.read_sql("SELECT person_id, fh FROM truth", con).set_index("person_id")["fh"]
     y = (np.asarray(X.index.map(truth)) > 0).astype(int)
     groups = X["clan_id"].to_numpy()
     n = len(X)
-    print(f"{n} people with at least one lipid panel, {y.sum()} with FH (synthetic)")
+    say({"kind": "stage", "text": f"{n} people with a cholesterol result, {int(y.sum())} with FH (synthetic)"})
 
-    raw_own, _, _, _ = cross_validate(X, y, groups, features.FEATURES_A)
-    print("own-record model done")
-    raw, cal, contrib, fold_of = cross_validate(X, y, groups, features.FEATURES_B)
-    print("linked-family model done")
+    raw_own, cal_own, _, _ = cross_validate(X, y, groups, features.FEATURES_A, folds, progress, "own")
+    raw, cal, contrib, fold_of = cross_validate(X, y, groups, features.FEATURES_B, folds, progress, "linked")
+    say({"kind": "stage", "text": "Comparing methods and checking fairness"})
 
     d = [dlcn_for(r) for _, r in X.iterrows()]
     d_linked = [dlcn_for(r, linked=True) for _, r in X.iterrows()]
@@ -160,15 +195,15 @@ def main():
 
     metrics = {}
     for key, s in score_of.items():
-        folds = [float(roc_auc_score(y[fold_of == f], s[fold_of == f])) for f in range(5)]
+        fold_auc = [float(roc_auc_score(y[fold_of == f], s[fold_of == f])) for f in range(folds)
+                    if 0 < y[fold_of == f].sum() < (fold_of == f).sum()]
         metrics[key] = {
             "name": METHODS[key],
             "auroc": float(roc_auc_score(y, s)), "auprc": float(average_precision_score(y, s)),
             "auroc_ci": interval(lambda i: roc_auc_score(y[i], s[i]) if 0 < y[i].sum() < len(i) else None, n, rng),
             "auprc_ci": interval(lambda i: average_precision_score(y[i], s[i]) if y[i].sum() else None, n, rng),
-            "auroc_folds": [min(folds), max(folds)],
+            "auroc_folds": [min(fold_auc), max(fold_auc)] if fold_auc else [0.0, 0.0],
         }
-        print(key, round(metrics[key]["auroc"], 3), round(metrics[key]["auprc"], 3))
 
     # Same workload for every method: as many people as DLCN 6 or more flags.
     k = int((dl >= 6).sum())
@@ -184,6 +219,16 @@ def main():
     chosen = max(ok, key=lambda r: r["threshold"]) if ok else thresholds[0]
     threshold = chosen["threshold"]
     flagged = raw >= threshold
+    ok_own = [t for t in (0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.15, 0.2) if rates(y, raw_own >= t)["sensitivity"] >= TARGET_SENS]
+    threshold_own = max(ok_own) if ok_own else 0.02
+
+    curves = {key: curve_points(y, s) for key, s in score_of.items() if key != "dlcn_linked"}
+    for key in curves:  # where each method sits at the shared workload
+        flag = (dl >= 6) if key == "dlcn" else top_k(score_of[key], k)
+        tp = int((y & flag).sum())
+        fp = int(flag.sum()) - tp
+        curves[key]["point"] = {"fpr": fp / max(int((y == 0).sum()), 1), "tpr": tp / max(int(y.sum()), 1),
+                                "precision": tp / max(int(flag.sum()), 1)}
 
     bands = np.array([band_for(bool(f), float(c)) for f, c in zip(flagged, cal)])
     band_table = []
@@ -246,6 +291,8 @@ def main():
         "label": "On synthetic data",
         "model_version": MODEL_VERSION,
         "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "run": {"folds": folds, "sample": sample or 1.0, "quick": bool(sample and sample < 1)},
+        "curves": curves,
         "population": {"people": int(n_people), "with_labs": int(n), "with_fh_with_labs": int(y.sum()),
                        "with_fh_total": int((truth > 0).sum())},
         "methods": METHODS,
@@ -270,7 +317,7 @@ def main():
             "family_data_governance": "The linked-family model reads relatives' records. In production the family "
                                       "book could supply these links, but using a relative's data to score someone "
                                       "else needs a legal basis, governance approval and clear patient information.",
-            "validation": "Five-fold cross-validation grouped by extended family, so relatives never sit on both "
+            "validation": f"{folds}-fold cross-validation grouped by extended family, so relatives never sit on both "
                           "sides of a split. Scores are calibrated inside the folds. Intervals are 95% bootstrap "
                           f"intervals over {N_BOOT} resamples.",
             "limits": [
@@ -284,13 +331,17 @@ def main():
             ],
         },
     }
-    EVAL_PATH.write_text(json.dumps(evaluation, indent=2))
-
-    # Final model on all data, with a calibrator fitted on the out-of-fold scores, for live scoring.
+    # Final models on all data, each with a calibrator fitted on its out-of-fold scores, for live scoring.
+    # The own-record model scores numbers typed in by hand, where there are no relatives to link.
+    say({"kind": "stage", "text": "Fitting the final models on everyone"})
     final = model().fit(X[features.FEATURES_B], y)
     calibrator = IsotonicRegression(y_min=0, y_max=1, out_of_bounds="clip").fit(raw, y)
+    final_own = model().fit(X[features.FEATURES_A], y)
+    calibrator_own = IsotonicRegression(y_min=0, y_max=1, out_of_bounds="clip").fit(raw_own, y)
     joblib.dump({"model": final, "features": features.FEATURES_B, "threshold": threshold, "calibrator": calibrator,
-                 "version": MODEL_VERSION}, MODEL_PATH)
+                 "version": MODEL_VERSION,
+                 "own": {"model": final_own, "features": features.FEATURES_A, "threshold": threshold_own,
+                         "calibrator": calibrator_own}}, out_dir / "model.joblib")
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     rows = []
@@ -299,15 +350,22 @@ def main():
         rows.append((int(pid), d[i]["total"], d[i]["band"], json.dumps(d[i]["items"]), int(dl_linked[i]),
                      float(raw_own[i]), float(raw[i]), float(cal[i]), bands[i], json.dumps(reasons),
                      int(flagged[i]), MODEL_VERSION, now))
-    con.execute("DROP TABLE IF EXISTS scores")
-    con.execute(SCORES_SCHEMA)
-    con.executemany(f"INSERT INTO scores VALUES ({','.join('?' * 13)})", rows)
+    con.execute(f"DROP TABLE IF EXISTS {table}")
+    con.execute(SCORES_SCHEMA.replace("TABLE scores", f"TABLE {table}"))
+    con.executemany(f"INSERT INTO {table} VALUES ({','.join('?' * 13)})", rows)
     con.commit()
     con.close()
+    evaluation["train_seconds"] = round(time.perf_counter() - started, 1)
+    (out_dir / "evaluation.json").write_text(json.dumps(evaluation, indent=2))
+    say({"kind": "done", "seconds": evaluation["train_seconds"], "metrics": metrics})
+    return evaluation
 
-    print(json.dumps({"matched": {k_: (v["found"], round(v["ppv"], 2)) for k_, v in matched["methods"].items()},
-                      "threshold": evaluation["worklist_threshold"], "bands": band_table,
-                      "brier": [calibration["brier_raw"], calibration["brier_calibrated"]]}, indent=1))
+
+def main():
+    e = train()
+    m = e["matched_workload"]["methods"]
+    print(json.dumps({"matched": {k_: (v["found"], round(v["ppv"], 2)) for k_, v in m.items()},
+                      "threshold": e["worklist_threshold"]["threshold"], "seconds": e["train_seconds"]}, indent=1))
 
 
 SCORES_SCHEMA = (
