@@ -637,3 +637,207 @@ details.fold > .fold-body {
 .tabs button.on {
   background: var(--surface);
 }
+
+/* Role-based UI additions */
+.banner a {
+  color: #e7e5e4;
+  text-decoration: underline;
+}
+.demobar select {
+  padding: 5px 8px;
+  font-size: 14px;
+}
+.demobar-gap {
+  flex: 1;
+}
+.demobar-more {
+  padding-bottom: 8px;
+}
+.demobar-more p {
+  margin: 0;
+}
+.story {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+}
+.story li.done {
+  color: var(--good);
+}
+.story li.next {
+  color: var(--ink);
+  font-weight: 600;
+}
+.tabs {
+  flex-wrap: wrap;
+  border-radius: 14px;
+}
+.tabs .count {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.state {
+  padding: 20px;
+}
+.skeleton {
+  height: 14px;
+  border-radius: 6px;
+  background: var(--sunken);
+  margin: 10px 0;
+}
+.done-note {
+  background: #dcfce7;
+  color: #14532d;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.band {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 13px;
+  white-space: nowrap;
+  background: var(--sunken);
+}
+.band.very-likely {
+  background: var(--brand);
+  color: #fff;
+}
+.band.likely {
+  background: var(--s-confirmed);
+}
+.band.possible {
+  background: #fef3c7;
+}
+.band.big {
+  font-size: 22px;
+  font-weight: 700;
+  padding: 4px 14px;
+  margin: 6px 0;
+}
+.band.big.plain {
+  background: var(--sunken);
+}
+.band.big .small {
+  font-weight: 400;
+}
+.scores {
+  margin-top: 4px;
+}
+.reason-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.reason-bars li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px;
+  gap: 12px;
+  align-items: center;
+  padding: 3px 0;
+}
+.reason-bars .track {
+  background: var(--sunken);
+  border-radius: 4px;
+  height: 8px;
+  display: block;
+}
+.reason-bars .fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--brand);
+}
+.reason-bars .fill.against {
+  background: #57534e;
+}
+.checks {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+  display: grid;
+  gap: 4px;
+}
+.checks label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+table.confirm td {
+  vertical-align: top;
+}
+.pill.declined,
+.pill.no_response {
+  background: var(--sunken);
+}
+.pill.already_tested {
+  background: var(--s-wellchild);
+}
+.pill.call_requested {
+  background: var(--s-invited);
+}
+tr.dim td {
+  color: var(--faint);
+}
+.sliders {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.slider {
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+}
+.slider input {
+  padding: 0;
+  border: 0;
+  accent-color: var(--brand);
+}
+.phone .wide {
+  width: 100%;
+  padding: 13px;
+  font-size: 16px;
+  margin-top: 8px;
+}
+.phone button.primary.wide {
+  margin-top: 16px;
+}
+.phone .step {
+  margin: 14px 0 4px;
+}
+button.link {
+  background: none;
+  padding: 0;
+  color: var(--brand);
+  font-weight: 400;
+  margin-top: 16px;
+  display: block;
+}
+button.link:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+button.ghost {
+  background: transparent;
+  color: var(--muted);
+}
+.relative-page {
+  padding: 24px 12px 48px;
+}
+.phone {
+  border: 0;
+}
+.phone-frame .phone {
+  border: 10px solid #1c1917;
+}
+@media (max-width: 480px) {
+  .relative-page {
+    padding: 0;
+  }
+  .relative-page .phone {
+    border-radius: 0;
+    min-height: 90vh;
+  }
+}

@@ -1,30 +1,39 @@
-import { ReactNode, useState } from "react";
-import { Brief, changed, fmtDate, post, scorePct, useApi } from "../api";
+import { useEffect, useState } from "react";
+import { ApiError, Brief, Role, changed, fmtDate, go, pct, post, useApi } from "../api";
 import FamilyTree, { Legend, TreeNode } from "../components/FamilyTree";
 import Fold from "../components/Fold";
 import LabChart from "../components/LabChart";
+import { ActionError, LoadError, Loading } from "../components/State";
 
+type Reason = { text: string; direction: "for" | "against"; weight: number };
+type Action = { id: string; label: string; primary: boolean; needs: string[] };
+type PlanRow = { id: number; name: string; given: string; relation: string; age: number; lang: string; outcome: "invite" | "wellchild" | "none"; why?: string; message: string | null };
+type Next = {
+  key: string;
+  title: string;
+  detail: string;
+  waiting_on: string | null;
+  just_done?: string | null;
+  actions: Action[];
+  dismiss_reasons: Record<string, string>;
+  plan?: { relatives: PlanRow[]; abroad: number; invite: number; wellchild: number };
+};
 type Case = {
   id: number;
   status: string;
   status_label: string;
   source: string;
-  created_at: string;
-  test_due: string | null;
-  found_variant: string | null;
   consent: number | null;
   consent_at: string | null;
-  cascade_at: string | null;
-  led_by?: Brief & { case_id: number };
-  led_to: (Brief & { case_id: number; status: string })[];
-  invitations: Record<string, number>;
-  wellchild: number;
-  letter_abroad: number;
+  consent_excluded: number[];
+  through_family: boolean;
+  led_by?: Brief;
+  progress: { invited: number; replied: number; wellchild: number; letter_abroad: number; tested?: number; found?: number };
 };
 type Data = {
+  role: Role;
   person: Brief & {
     nationality_group: string;
-    lang: string;
     statin_start: string | null;
     statin_intensity: string | null;
     cad_age: number | null;
@@ -36,49 +45,70 @@ type Data = {
   };
   labs: { date: string; ldl: number; tc: number; hdl: number; tg: number; on_statin: boolean; new: boolean }[];
   score: null | {
-    prob_b: number;
+    band: string;
+    band_rate: number | null;
+    flagged: boolean;
+    raw: number;
+    calibrated: number;
     dlcn_total: number;
     dlcn_band: string;
+    dlcn_linked_total: number;
     dlcn_items: { group: string; reason: string; points: number }[];
-    reasons: string[];
+    reasons: Reason[];
     live: boolean;
+    model_version: string;
   };
   case: Case | null;
-  actions: string[];
-  invitation: { status: string; sent_at: string; slot: string | null } | null;
-  wellchild: { status: string; due_date: string } | null;
-  family: { nodes: TreeNode[]; relatives_abroad: number };
-  history: { id: number; sim_date: string; actor: string; action: string; detail: string | null }[];
+  next: Next | null;
+  contact: { kind: "invitation" | "wellchild"; status: string; sent_at?: string; due_date?: string } | null;
+  family: { nodes: TreeNode[]; relatives_abroad: number; results_visible: boolean };
+  timeline: { id: number; date: string; actor: string; action: string; decision: boolean; detail: Record<string, unknown> | null }[];
   today: string;
 };
 
+const WAITING: Record<string, string> = { lab: "the genetics lab", clinician: "the clinician", coordinator: "the family coordinator" };
+const CONTACT: Record<string, string> = {
+  sent: "Invited to a cholesterol check. No reply yet.",
+  replied: "Invited to a cholesterol check, and has replied.",
+  booked: "Has booked a cholesterol check.",
+  negative: "Tested clear. Nothing further.",
+  positive: "Tested positive.",
+  declined: "Declined the invitation. They will not be contacted again.",
+  already_tested: "Says they have already been tested.",
+  call_requested: "Asked for a phone call.",
+  no_response: "Has not replied to the invitation.",
+  due: "Cholesterol test due at the next Well-Child Visit.",
+  tested_negative: "Tested clear at Well-Child.",
+  tested_positive: "Tested positive at Well-Child.",
+};
+
 export default function Patient({ id }: { id: number }) {
-  const { data, error } = useApi<Data>(`/api/patients/${id}`);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const { data, error, reload } = useApi<Data>(`/api/patients/${id}`);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<ApiError | null>(null);
+  const [decisionsOnly, setDecisionsOnly] = useState(false);
+  useEffect(() => setErr(null), [id]);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Loading</p>;
-  const { person: p, score, case: c } = data;
+  if (error) return <LoadError error={error} retry={reload} />;
+  if (!data) return <Loading rows={6} />;
+  const { person: p, score, case: c, next } = data;
 
-  async function act(path: string, body?: unknown) {
-    setBusy(true);
+  async function act(action: string, inputs: Record<string, unknown> = {}) {
+    setBusy(action);
     setErr(null);
     try {
-      await post(path, body);
+      await post(`/api/patients/${id}/act`, { action, ...inputs });
       changed();
     } catch (e) {
-      setErr(String((e as Error).message));
+      setErr(e as ApiError);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
-  const btn = (label: string, path: string, body?: unknown, primary = false) => (
-    <button className={primary ? "primary" : ""} disabled={busy} onClick={() => act(path, body)}>
-      {label}
-    </button>
-  );
-  const reviewBtn = (label: string, action: string, primary = false) => btn(label, `/api/patients/${id}/review`, { action }, primary);
+  const timeline = decisionsOnly ? data.timeline.filter((t) => t.decision) : data.timeline;
+  const forReasons = score?.reasons.filter((r) => r.direction === "for") ?? [];
+  const against = score?.reasons.filter((r) => r.direction === "against") ?? [];
+  const top = Math.max(0.001, ...(score?.reasons.map((r) => r.weight) ?? []));
 
   return (
     <div className="stack">
@@ -92,60 +122,96 @@ export default function Patient({ id }: { id: number }) {
         {c && <span className={`pill ${c.status}`}>{c.status_label}</span>}
       </div>
 
-      {c?.led_by && (
+      {c?.through_family && (
         <p className="notice" style={{ margin: 0 }}>
-          Found through family testing, after <a href={`#/patient/${c.led_by.id}`}>{c.led_by.name}</a> was confirmed.
+          Found through family testing
+          {c.led_by ? (
+            <>
+              , in the family of <a href={`#/patient/${c.led_by.id}`}>{c.led_by.name}</a>.
+            </>
+          ) : (
+            ". Which relative led here is not shown to the clinician."
+          )}
         </p>
       )}
 
-      <div className="grid g2">
+      <div className={next?.plan ? "stack" : "grid g2"}>
         <section className="next">
-          <NextStep data={data} reviewBtn={reviewBtn} btn={btn} />
-          {err && <p className="error" style={{ marginTop: 12 }}>{err}</p>}
-        </section>
-
-        <section className="card">
-          {score ? (
-            <>
-              <div className="spread">
-                <h2>Why flagged</h2>
-                <span className="small muted">DLCN {score.dlcn_total}, {score.dlcn_band.toLowerCase()}</span>
-              </div>
-              <div className="row" style={{ alignItems: "baseline", gap: 10, margin: "4px 0 12px" }}>
-                <span className="big-score">{scorePct(score.prob_b)}</span>
-                <span className="muted">chance of FH, by the model</span>
-              </div>
-              {score.reasons.length > 0 ? (
-                <ul className="reasons">
-                  {score.reasons.map((r) => (
-                    <li key={r}>{r}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="muted">No strong signals in the record.</p>
-              )}
-              <p className="synthetic" style={{ marginTop: 12, marginBottom: 0 }}>
-                Model trained on synthetic data.
-              </p>
-            </>
+          {next?.just_done && (
+            <p className="done-note" role="status">
+              {next.just_done}
+            </p>
+          )}
+          {next && c ? (
+            <NextStep next={next} c={c} role={data.role} nodes={data.family.nodes} act={act} busy={busy} />
           ) : (
             <>
-              <h2>Not scored</h2>
-              <p className="muted" style={{ margin: 0 }}>
-                No cholesterol results on record.
-              </p>
+              <h2>Status</h2>
+              <p style={{ margin: 0 }}>{data.contact ? CONTACT[data.contact.status] : "Not flagged. No action needed."}</p>
             </>
           )}
+          {err && <ActionError error={err} />}
         </section>
+
+        {score ? (
+          <section className="card">
+            <h2>Why flagged</h2>
+            <div className="grid g2 scores">
+              <div>
+                <div className="small muted">Heart Line model, added by this tool</div>
+                <div className={`band big ${score.band.replace(" ", "-").toLowerCase()}`}>{score.band}</div>
+                {score.flagged && score.band_rate != null && (
+                  <div className="small muted">About {Math.round(score.band_rate * 10)} in 10 people in this band had FH, in synthetic data.</div>
+                )}
+              </div>
+              <div>
+                <div className="small muted">DLCN score, the standard clinical score</div>
+                <div className="band big plain">
+                  {score.dlcn_total} <span className="small">{score.dlcn_band.toLowerCase()}</span>
+                </div>
+                <div className="small muted">
+                  {score.dlcn_linked_total > score.dlcn_total
+                    ? `${score.dlcn_linked_total} if relatives' records are counted as family history.`
+                    : "From what is written in this chart."}
+                </div>
+              </div>
+            </div>
+            {forReasons.length > 0 && (
+              <>
+                <h3 style={{ marginTop: 14 }}>Points towards FH</h3>
+                <Reasons items={forReasons} top={top} />
+              </>
+            )}
+            {against.length > 0 && (
+              <>
+                <h3 style={{ marginTop: 12 }}>Points away from it</h3>
+                <Reasons items={against} top={top} against />
+              </>
+            )}
+            {forReasons.length + against.length === 0 && <p className="muted">No strong signals in the record.</p>}
+          </section>
+        ) : (
+          <section className="card">
+            <h2>Not scored</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              No cholesterol results on record, so the model has nothing to go on.
+            </p>
+          </section>
+        )}
       </div>
 
       <section className="card">
         <div className="spread">
           <h2>Family</h2>
-          <Legend />
+          <Legend nodes={data.family.nodes} />
         </div>
+        {!data.family.results_visible && (
+          <p className="small muted" style={{ marginTop: 6 }}>
+            You can see who has been contacted and who has replied. Each adult relative's result stays with them and the family coordinator.
+          </p>
+        )}
         <div style={{ marginTop: 12 }}>
-          <FamilyTree nodes={data.family.nodes} abroad={data.family.relatives_abroad} onOpen={(pid) => (window.location.hash = `#/patient/${pid}`)} />
+          <FamilyTree nodes={data.family.nodes} abroad={data.family.relatives_abroad} onOpen={(pid) => go(`#/patient/${pid}`)} />
         </div>
       </section>
 
@@ -184,7 +250,7 @@ export default function Patient({ id }: { id: number }) {
         </Fold>
 
         {score && (
-          <Fold title="Score details" note={`DLCN ${score.dlcn_total}`}>
+          <Fold title="Score details" note={`Model ${pct(score.calibrated)}, DLCN ${score.dlcn_total}`}>
             <h3>Dutch Lipid Clinic Network score</h3>
             {score.dlcn_items.length ? (
               <table className="small">
@@ -200,6 +266,16 @@ export default function Patient({ id }: { id: number }) {
             ) : (
               <p className="muted">No points from the record.</p>
             )}
+            <h3 style={{ marginTop: 16 }}>Model</h3>
+            <dl className="facts small">
+              <dt>Calibrated estimate</dt>
+              <dd>{pct(score.calibrated)} (raw model output {score.raw.toFixed(3)})</dd>
+              <dt>Version</dt>
+              <dd>
+                {score.model_version}, {score.live ? "scored when the result arrived" : "cross-validated"}. Trained on synthetic data.{" "}
+                <a href="#/model">How well does it work?</a>
+              </dd>
+            </dl>
             <h3 style={{ marginTop: 16 }}>From the record</h3>
             <dl className="facts small">
               <dt>Statin</dt>
@@ -207,27 +283,27 @@ export default function Patient({ id }: { id: number }) {
               <dt>Heart disease</dt>
               <dd>{p.cad_age ? `At age ${Math.round(p.cad_age)}${p.early_cad ? ", early" : ""}` : "None"}</dd>
               <dt>Examination</dt>
-              <dd>{[p.xanthoma && "Tendon xanthomas", p.arcus && "Corneal arcus"].filter(Boolean).join(", ") || "Nothing noted"}</dd>
+              <dd>{[p.xanthoma && "Tendon xanthomas", p.arcus && "Corneal arcus"].filter(Boolean).join(", ") || "Not recorded"}</dd>
               <dt>Family history</dt>
-              <dd>
-                {[p.fhx_recorded_cad && "Early heart disease", p.fhx_recorded_ldl && "High cholesterol"].filter(Boolean).join(", ") || "Nothing written in the chart"}
-              </dd>
+              <dd>{[p.fhx_recorded_cad && "Early heart disease", p.fhx_recorded_ldl && "High cholesterol"].filter(Boolean).join(", ") || "Not recorded in the chart"}</dd>
             </dl>
-            <p className="synthetic" style={{ marginTop: 12 }}>
-              {score.live ? "Scored live by the final model." : "Cross-validated score."} The model also uses relatives' records. DLCN uses only family
-              history written in the chart.
-            </p>
           </Fold>
         )}
 
-        <Fold title="History" note={`${data.history.length} entries`}>
-          {data.history.length ? (
+        <Fold title="What has happened" note={`${data.timeline.length} entries`}>
+          <label className="small row" style={{ gap: 6, marginBottom: 8 }}>
+            <input type="checkbox" checked={decisionsOnly} onChange={(e) => setDecisionsOnly(e.target.checked)} /> Decisions by staff only
+          </label>
+          {timeline.length ? (
             <table className="small">
               <tbody>
-                {data.history.map((h) => (
+                {timeline.map((h) => (
                   <tr key={h.id}>
-                    <td style={{ whiteSpace: "nowrap" }}>{fmtDate(h.sim_date)}</td>
-                    <td>{h.action}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{fmtDate(h.date)}</td>
+                    <td>
+                      {h.action}
+                      {h.detail && <span className="muted"> {says(h.detail)}</span>}
+                    </td>
                     <td className="muted">{h.actor}</td>
                   </tr>
                 ))}
@@ -236,181 +312,207 @@ export default function Patient({ id }: { id: number }) {
           ) : (
             <p className="muted">Nothing recorded yet.</p>
           )}
-          <p className="small" style={{ marginTop: 12 }}>
-            <a href={`/api/fhir/Patient/${p.id}`} target="_blank" rel="noreferrer">
-              Export this record as FHIR R4
-            </a>
-          </p>
+          {data.role === "clinician" && (
+            <p className="small" style={{ marginTop: 12 }}>
+              <a href={`/api/fhir/Patient/${p.id}`} target="_blank" rel="noreferrer">
+                Export this record as FHIR R4
+              </a>
+            </p>
+          )}
         </Fold>
       </div>
     </div>
   );
 }
 
+// Detail from an audit row as a short phrase. Only a few keys are worth a reader's time.
+export function says(d: Record<string, unknown>) {
+  const pick = ["reason", "result_due", "found_variant", "result", "language", "slot", "basis", "why", "due"];
+  const parts = pick.filter((k) => d[k] != null).map((k) => (k === "result_due" || k === "due" ? `due ${fmtDate(String(d[k]))}` : String(d[k])));
+  return parts.length ? `(${parts.join(", ")})` : "";
+}
 
-type Btn = (label: string, path: string, body?: unknown, primary?: boolean) => ReactNode;
-
-// One clear next step for the clinician, based on where the case is.
-function NextStep({ data, reviewBtn, btn }: { data: Data; reviewBtn: (l: string, a: string, primary?: boolean) => ReactNode; btn: Btn }) {
-  const c = data.case;
-  const a = data.actions;
-  const pid = data.person.id;
-
-  if (!c) {
-    const inv = data.invitation;
-    const wc = data.wellchild;
-    const text = inv
-      ? {
-          sent: `Invited to a cholesterol check on ${fmtDate(inv.sent_at)}. Not booked yet.`,
-          booked: `Check booked${inv.slot ? ` for ${inv.slot.split(" | ")[0]}` : ""}.`,
-          negative: "Tested clear. No further action.",
-          positive: "Tested positive.",
-          no_response: "Did not respond to the invitation.",
-        }[inv.status]
-      : wc
-        ? wc.status === "due"
-          ? `Cholesterol test due at the Well-Child Visit on ${fmtDate(wc.due_date)}.`
-          : `Tested at Well-Child: ${wc.status === "tested_negative" ? "clear" : "positive"}.`
-        : "Not flagged. No action needed.";
-    return (
-      <>
-        <h2>Status</h2>
-        <p style={{ margin: 0 }}>{text}</p>
-      </>
-    );
-  }
-
-  if (a.includes("order_test")) {
-    return (
-      <>
-        <h2>Review this flag</h2>
-        <p className="muted">If the reasons fit, order a genetic test. It takes about two weeks.</p>
-        <div className="row">
-          {reviewBtn("Order genetic test", "order_test", true)}
-          {reviewBtn("Dismiss", "dismiss")}
-        </div>
-      </>
-    );
-  }
-  if (c.status === "test_ordered") {
-    return (
-      <>
-        <h2>Waiting for the genetic test</h2>
-        <p className="muted" style={{ margin: 0 }}>
-          Result due {fmtDate(c.test_due)}. Use Advance two weeks to get it.
-        </p>
-      </>
-    );
-  }
-  if (c.status === "no_variant") {
-    return (
-      <>
-        <h2>No variant found</h2>
-        <p className="muted">
-          {a.includes("mark_clinical") ? "The DLCN score is 6 or more, so this can still be recorded as clinical FH." : "The DLCN score is below 6."}
-        </p>
-        <div className="row">
-          {a.includes("mark_clinical") && reviewBtn("Record as clinical FH", "mark_clinical", true)}
-          {reviewBtn("Dismiss", "dismiss")}
-        </div>
-      </>
-    );
-  }
-  if (c.status === "dismissed") {
-    return (
-      <>
-        <h2>Dismissed</h2>
-        <p className="muted" style={{ margin: 0 }}>No further action.</p>
-      </>
-    );
-  }
-
-  const found = c.found_variant ? `Confirmed: ${c.found_variant}.` : "Confirmed as clinical FH.";
-  if (a.includes("consent")) {
-    return (
-      <>
-        <h2>Ask about family testing</h2>
-        <p className="muted">{found}</p>
-        <p>
-          "May we invite your parents, brothers, sisters and adult children to a free cholesterol check? The invitation won't mention you or your
-          diagnosis."
-        </p>
-        <div className="row">
-          {btn("Patient agrees", `/api/patients/${pid}/consent`, { consent: true }, true)}
-          {btn("Patient declines", `/api/patients/${pid}/consent`, { consent: false })}
-        </div>
-      </>
-    );
-  }
-  if (c.consent === 0) {
-    return (
-      <>
-        <h2>Family testing declined</h2>
-        <p className="muted" style={{ margin: 0 }}>
-          {found} The patient declined on {fmtDate(c.consent_at)}. Nobody has been contacted.
-        </p>
-      </>
-    );
-  }
-  if (a.includes("start_cascade")) {
-    return (
-      <>
-        <h2>Start family testing</h2>
-        <p className="muted">
-          {found} The patient agreed. Adults get a private invitation and children are flagged for their Well-Child Visit.
-        </p>
-        <div className="row">{btn("Start family testing", `/api/cases/${c.id}/cascade`, undefined, true)}</div>
-      </>
-    );
-  }
-  if (c.cascade_at) {
-    const inv = c.invitations;
-    const invited = Object.values(inv).reduce((x, y) => x + y, 0);
-    const tested = (inv.positive ?? 0) + (inv.negative ?? 0);
-    return (
-      <>
-        <h2>Family testing under way</h2>
-        <p className="muted">{found}</p>
-        <div className="grid" style={{ marginTop: 8, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
-          <div className="stat">
-            <div className="n">{invited}</div>
-            <div className="l">relatives invited</div>
-          </div>
-          <div className="stat">
-            <div className="n">{tested}</div>
-            <div className="l">tested so far</div>
-          </div>
-          <div className="stat">
-            <div className="n" style={{ color: "var(--brand)" }}>
-              {c.led_to.length}
-            </div>
-            <div className="l">found with FH</div>
-          </div>
-        </div>
-        {c.wellchild > 0 && <p className="small muted" style={{ marginTop: 12, marginBottom: 0 }}>{c.wellchild} children flagged for Well-Child.</p>}
-      </>
-    );
-  }
+function Reasons({ items, top, against }: { items: Reason[]; top: number; against?: boolean }) {
   return (
-    <>
-      <h2>Confirmed</h2>
-      <p className="muted" style={{ margin: 0 }}>
-        {found} {c.source === "wellchild" ? "The family decides about further testing." : ""}
-      </p>
-    </>
+    <ul className="reason-bars">
+      {items.map((r) => (
+        <li key={r.text}>
+          <span>{r.text}</span>
+          <span className="track" aria-hidden="true">
+            <span className={against ? "fill against" : "fill"} style={{ width: `${Math.max(6, (r.weight / top) * 100)}%` }} />
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-export function detail(d: string | null) {
-  if (!d) return "";
-  try {
-    const o = JSON.parse(d);
-    if (typeof o !== "object" || o === null) return String(o);
-    return Object.entries(o)
-      .filter(([, v]) => v !== null && v !== "")
-      .map(([k, v]) => `${k.replace(/_/g, " ")}: ${Array.isArray(v) ? v.join("; ") : typeof v === "number" ? Math.round(v * 1000) / 1000 : v}`)
-      .join(", ");
-  } catch {
-    return d;
+type Act = (action: string, inputs?: Record<string, unknown>) => void;
+
+// Renders what the server says is next. The server decides which buttons exist; this decides how they look.
+function NextStep({ next, c, role, nodes, act, busy }: { next: Next; c: Case; role: Role; nodes: TreeNode[]; act: Act; busy: string | null }) {
+  const [closing, setClosing] = useState(false);
+  const [reason, setReason] = useState("");
+  const [skip, setSkip] = useState<number[]>([]);
+  const can = (id: string) => next.actions.find((a) => a.id === id);
+  const toggle = (id: number) => setSkip(skip.includes(id) ? skip.filter((x) => x !== id) : [...skip, id]);
+  const btn = (a: Action | undefined, inputs?: Record<string, unknown>, label?: string) =>
+    a && (
+      <button key={a.id} className={a.primary ? "primary" : ""} disabled={busy !== null} onClick={() => act(a.id, inputs)}>
+        {busy === a.id ? "Working" : label ?? a.label}
+      </button>
+    );
+  const head = (
+    <>
+      <h2>{next.title}</h2>
+      <p className="muted">{next.detail}</p>
+    </>
+  );
+  const dismiss = can("dismiss");
+
+  if (next.key === "consent" && can("consent_yes")) {
+    const rel = nodes.filter((n) => n.first_degree && !n.deceased);
+    return (
+      <>
+        {head}
+        <p>
+          "May we invite your close relatives to a free cholesterol check? The invitation won't mention you or your diagnosis. Children are tested at
+          their next Well-Child Visit."
+        </p>
+        {rel.length > 0 && (
+          <fieldset className="checks">
+            <legend className="small muted">Untick anyone the patient does not want contacted</legend>
+            {rel.map((n) => (
+              <label key={n.id}>
+                <input type="checkbox" checked={!skip.includes(n.id)} onChange={() => toggle(n.id)} /> {n.given}, {n.relation.toLowerCase()}, {n.age}
+              </label>
+            ))}
+          </fieldset>
+        )}
+        <div className="row">
+          {btn(can("consent_yes"), { exclude: skip })}
+          {btn(can("consent_no"))}
+        </div>
+      </>
+    );
   }
+
+  if (next.key === "start" && next.plan && can("start_cascade")) {
+    const plan = next.plan;
+    const invites = plan.relatives.filter((r) => r.outcome === "invite");
+    const kids = plan.relatives.filter((r) => r.outcome === "wellchild");
+    const none = plan.relatives.filter((r) => r.outcome === "none");
+    const n = invites.filter((r) => !skip.includes(r.id)).length;
+    return (
+      <>
+        {head}
+        <div className="table-wrap">
+          <table className="small confirm">
+            <thead>
+              <tr>
+                <th>Send</th>
+                <th>Relative</th>
+                <th>The exact message they get, by SMS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invites.map((r) => (
+                <tr key={r.id}>
+                  <td>
+                    <input type="checkbox" aria-label={`Send to ${r.name}`} checked={!skip.includes(r.id)} onChange={() => toggle(r.id)} />
+                  </td>
+                  <td>
+                    {r.name}
+                    <div className="muted">
+                      {r.relation}, {r.age}. {r.lang === "ar" ? "Arabic" : "English"}
+                    </div>
+                  </td>
+                  <td dir={r.lang === "ar" ? "rtl" : "ltr"} lang={r.lang}>
+                    {r.message}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {kids.length > 0 && (
+          <p className="small">
+            <strong>No message, flagged for Well-Child:</strong> {kids.map((k) => `${k.given} (${k.age})`).join(", ")}.
+          </p>
+        )}
+        {none.length > 0 && (
+          <p className="small muted">
+            <strong>Not contacted:</strong> {none.map((k) => `${k.name} (${k.why?.toLowerCase()})`).join("; ")}.
+          </p>
+        )}
+        {plan.abroad > 0 && <p className="small muted">{plan.abroad} relatives live abroad. A family letter is prepared for the patient to share.</p>}
+        <p className="small">The message does not name the patient or the condition. This is a demo: nothing is really sent.</p>
+        <div className="row">{btn(can("start_cascade"), { exclude: skip }, `Send ${n} invitation${n === 1 ? "" : "s"}`)}</div>
+      </>
+    );
+  }
+
+  if (next.key === "running") {
+    const g = c.progress;
+    const cells: [number, string, boolean?][] =
+      role === "coordinator"
+        ? [
+            [g.invited, "relatives invited"],
+            [g.tested ?? 0, "tested so far"],
+            [g.found ?? 0, "found with FH", true],
+          ]
+        : [
+            [g.invited, "relatives invited"],
+            [g.replied, "have replied"],
+            [g.wellchild, "children at Well-Child"],
+          ];
+    return (
+      <>
+        {head}
+        <div className="grid" style={{ marginTop: 8, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+          {cells.map(([n, l, hot]) => (
+            <div className="stat" key={l}>
+              <div className="n" style={hot ? { color: "var(--brand)" } : undefined}>
+                {n}
+              </div>
+              <div className="l">{l}</div>
+            </div>
+          ))}
+        </div>
+        {g.letter_abroad > 0 && <p className="small muted" style={{ margin: "12px 0 0" }}>Family letter prepared for {g.letter_abroad} relatives abroad.</p>}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {head}
+      {next.waiting_on && <p className="small">Waiting on {WAITING[next.waiting_on]}.</p>}
+      {closing && dismiss ? (
+        <fieldset className="checks">
+          <legend className="small muted">Why is this not FH?</legend>
+          {Object.entries(next.dismiss_reasons).map(([k, label]) => (
+            <label key={k}>
+              <input type="radio" name="reason" checked={reason === k} onChange={() => setReason(k)} /> {label}
+            </label>
+          ))}
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="primary" disabled={!reason || busy !== null} onClick={() => act("dismiss", { reason })}>
+              Close the flag
+            </button>
+            <button onClick={() => setClosing(false)}>Cancel</button>
+          </div>
+        </fieldset>
+      ) : (
+        <div className="row">
+          {next.actions.filter((a) => a.id !== "dismiss").map((a) => btn(a))}
+          {dismiss && (
+            <button disabled={busy !== null} onClick={() => setClosing(true)}>
+              {dismiss.label}
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  );
 }

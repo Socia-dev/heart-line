@@ -9,15 +9,17 @@ export type TreeNode = {
   deceased: boolean;
   mother_id: number | null;
   father_id: number | null;
+  first_degree?: boolean;
 };
 
-// Six colours. The node's third line carries the finer detail (booked, Well-Child due).
+// A few colours. The node's third line carries the finer detail (booked, Well-Child due).
 const GROUPS = {
   index: { label: "This patient", fill: "var(--s-index)", ink: "#fff" },
   fh: { label: "Has FH", fill: "var(--s-confirmed)" },
-  waiting: { label: "Invited, test pending", fill: "var(--s-invited)" },
+  waiting: { label: "Invited, waiting", fill: "var(--s-invited)" },
+  replied: { label: "Replied", fill: "var(--s-wellchild)" },
   clear: { label: "Tested clear", fill: "var(--s-negative)" },
-  none: { label: "Not tested", fill: "var(--s-unknown)", border: true },
+  none: { label: "Not contacted", fill: "var(--s-unknown)", border: true },
   deceased: { label: "Deceased", fill: "var(--s-deceased)", ink: "#fff" },
 } as const;
 type Group = { label: string; fill: string; ink?: string; border?: boolean };
@@ -28,11 +30,14 @@ export const STATUS: Record<string, Group & { group: keyof typeof GROUPS }> = {
   assessing: { ...GROUPS.waiting, label: "Being assessed", group: "waiting" },
   invited: { ...GROUPS.waiting, label: "Invited", group: "waiting" },
   booked: { ...GROUPS.waiting, label: "Check booked", group: "waiting" },
+  call_requested: { ...GROUPS.waiting, label: "Asked for a call", group: "waiting" },
   wellchild: { ...GROUPS.waiting, label: "Well-Child test due", group: "waiting" },
+  replied: { ...GROUPS.replied, label: "Replied", group: "replied" },
+  already_tested: { ...GROUPS.replied, label: "Already tested", group: "replied" },
   negative: { ...GROUPS.clear, label: "Tested clear", group: "clear" },
-  no_response: { ...GROUPS.none, label: "No response", group: "none" },
-  not_confirmed: { ...GROUPS.none, label: "Not confirmed", group: "none" },
-  unknown: { ...GROUPS.none, label: "Not tested", group: "none" },
+  declined: { ...GROUPS.none, label: "Declined", group: "none" },
+  no_response: { ...GROUPS.none, label: "No reply", group: "none" },
+  unknown: { ...GROUPS.none, label: "Not contacted", group: "none" },
   deceased: { ...GROUPS.deceased, group: "deceased" },
 };
 
@@ -82,7 +87,7 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
         x: center,
         gen: 1,
         status: "unknown",
-        label: [`${kids.length} ${kids.length === 1 ? "child" : "children"}`, `of ${m.given}`, "Not tested"],
+        label: [`${kids.length} ${kids.length === 1 ? "child" : "children"}`, `of ${m.given}`, "Not contacted"],
         parentX: mx,
       });
     } else {
@@ -193,15 +198,18 @@ export default function FamilyTree({ nodes, abroad, onOpen }: { nodes: TreeNode[
   );
 }
 
-export function Legend() {
+export function Legend({ nodes }: { nodes: TreeNode[] }) {
+  const present = new Set(nodes.map((n) => (STATUS[n.status] ?? STATUS.unknown).group));
   return (
     <div className="legend">
-      {Object.entries(GROUPS).map(([k, g]) => (
-        <span key={k}>
-          <i style={{ background: g.fill }} />
-          {g.label}
-        </span>
-      ))}
+      {Object.entries(GROUPS)
+        .filter(([k]) => present.has(k as keyof typeof GROUPS))
+        .map(([k, g]) => (
+          <span key={k}>
+            <i style={{ background: g.fill }} />
+            {g.label}
+          </span>
+        ))}
     </div>
   );
 }

@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { Component, ReactNode, useEffect, useState } from "react";
+import { ROLES, Role, useRole } from "./api";
 import DemoBar from "./components/DemoBar";
-import Overview from "./screens/Overview";
-import Worklist from "./screens/Worklist";
-import Patient from "./screens/Patient";
-import Families from "./screens/Families";
-import Invite from "./screens/Invite";
-import WellChild from "./screens/WellChild";
-import Model from "./screens/Model";
+import About from "./screens/About";
 import Audit from "./screens/Audit";
+import Children from "./screens/Children";
+import Families from "./screens/Families";
+import Home from "./screens/Home";
+import Invite, { InvitePreview } from "./screens/Invite";
+import Model from "./screens/Model";
+import Patient from "./screens/Patient";
+import Programme from "./screens/Programme";
 
 function useRoute() {
   const [hash, setHash] = useState(window.location.hash || "#/");
@@ -19,54 +21,80 @@ function useRoute() {
     window.addEventListener("hashchange", f);
     return () => window.removeEventListener("hashchange", f);
   }, []);
-  return hash.replace(/^#/, "").split("/").filter(Boolean);
+  return hash.replace(/^#/, "").split("?")[0].split("/").filter(Boolean);
 }
 
-const NAV = [
-  ["", "Overview"],
-  ["worklist", "Worklist"],
-  ["families", "Families"],
-  ["wellchild", "Children"],
-  ["model", "Model"],
-] as const;
+// Each role has its own home and only the pages it needs.
+const NAV: Record<Role, [string, string][]> = {
+  clinician: [["", "My patients"]],
+  coordinator: [
+    ["", "My families"],
+    ["families", "Invitations"],
+    ["children", "Children"],
+  ],
+  nurse: [["", "Children due"]],
+  lead: [
+    ["", "Programme"],
+    ["model", "Can we trust the flags?"],
+    ["audit", "Audit"],
+  ],
+};
+
+class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="wrap main">
+        <div className="card state">
+          <h2>Something went wrong on this page</h2>
+          <p className="muted">Nothing was changed. Reload to carry on.</p>
+          <button onClick={() => window.location.reload()}>Reload</button>
+        </div>
+      </div>
+    );
+  }
+}
 
 export default function App() {
-  const route = useRoute();
-  const [section, arg] = route;
+  const [section, arg] = useRoute();
+  const role = useRole();
 
-  let screen;
-  switch (section) {
-    case "worklist":
-      screen = <Worklist />;
-      break;
-    case "patient":
-      screen = <Patient id={Number(arg)} />;
-      break;
-    case "families":
-      screen = <Families />;
-      break;
-    case "invite":
-      screen = <Invite token={arg} />;
-      break;
-    case "wellchild":
-      screen = <WellChild />;
-      break;
-    case "model":
-      screen = <Model />;
-      break;
-    case "audit":
-      screen = <Audit />;
-      break;
-    default:
-      screen = <Overview />;
+  // The invited relative's page stands alone: no staff navigation, no demo controls.
+  if (section === "i") {
+    return (
+      <Boundary>
+        <div className="banner" role="note">
+          <strong>Demo on synthetic data.</strong> <span>No real message was sent.</span>
+        </div>
+        <main className="relative-page">
+          <Invite token={arg} />
+        </main>
+      </Boundary>
+    );
   }
-  const active = section === "patient" ? "worklist" : section === "invite" ? "families" : section ?? "";
 
+  let screen: ReactNode;
+  if (section === "patient") screen = <Patient id={Number(arg)} />;
+  else if (section === "invite") screen = <InvitePreview token={arg} />;
+  else if (section === "about") screen = <About />;
+  else if (section === "model") screen = <Model />;
+  else if (section === "families" && role === "coordinator") screen = <Families />;
+  else if (section === "children" && role === "coordinator") screen = <Children />;
+  else if (section === "audit" && role === "lead") screen = <Audit />;
+  else if (role === "nurse") screen = <Children />;
+  else if (role === "lead") screen = <Programme />;
+  else screen = <Home />;
+
+  const active = ["families", "children", "model", "audit"].includes(section ?? "") ? section : "";
+  const me = ROLES.find((r) => r.id === role)!;
   return (
-    <>
+    <Boundary>
       <div className="banner" role="note">
-        <strong>Synthetic data. Not for clinical use.</strong>
-        <span> Messaging and lab systems are mocks.</span>
+        <strong>Synthetic data. Not for clinical use.</strong> <a href="#/about">What is real and what is mocked</a>
       </div>
       <header className="top">
         <div className="wrap top-inner">
@@ -80,19 +108,21 @@ export default function App() {
             Heart Line
           </a>
           <nav className="nav">
-            {NAV.map(([href, label]) => (
+            {NAV[role].map(([href, label]) => (
               <a key={href} href={`#/${href}`} className={active === href ? "on" : ""}>
                 {label}
               </a>
             ))}
           </nav>
+          <span className="today">
+            {me.name}, {me.title.toLowerCase()}
+          </span>
         </div>
       </header>
       <DemoBar />
-      <main className="wrap main">{screen}</main>
-      <footer className="wrap footer small muted">
-        Heart Line prototype on synthetic data. <a href="#/audit">Audit log</a>
-      </footer>
-    </>
+      <main className="wrap main" key={role}>
+        {screen}
+      </main>
+    </Boundary>
   );
 }

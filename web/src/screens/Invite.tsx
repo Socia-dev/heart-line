@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { changed, post, useApi } from "../api";
+import ar from "../locale/ar.json";
+import en from "../locale/en.json";
 
-type View = { given: string; lang: "ar" | "en"; status: "open" | "booked" | "closed"; slot: string | null; slots: string[]; mock: boolean };
+type Lang = "ar" | "en";
+type View = {
+  given: string;
+  lang: Lang;
+  state: "open" | "booked" | "declined" | "already_tested" | "call_requested" | "closed";
+  slot: string | null;
+  slots: string[];
+};
+const T: Record<Lang, typeof en> = { en, ar };
 
 const CLINIC_AR: Record<string, string> = {
   "Al Bateen Family Health Centre": "مركز البطين لصحة الأسرة",
@@ -9,147 +19,197 @@ const CLINIC_AR: Record<string, string> = {
   "Al Ain Healthy Family Clinic": "عيادة العين لصحة الأسرة",
 };
 
-const T = {
-  en: {
-    title: "You're invited to a free cholesterol check",
-    hello: (n: string) => `Hello ${n},`,
-    body: "High cholesterol can run in families and is easy to treat when it's found early. We'd like to offer you a free blood test at a health centre near you.",
-    detail: "It takes about 10 minutes and you don't need to fast.",
-    choose: "Choose a time",
-    book: "Book my check",
-    booked: "You're booked",
-    reminder: "We'll send you a reminder the day before.",
-    closed: "This invitation has already been used. If you need help, call your health centre.",
-    privacy: "Your information is private. Only your health centre can see it.",
-    from: "Your local health centre",
-    mock: "Demo only. No message was sent and no appointment was made.",
-    at: "at",
-  },
-  ar: {
-    title: "أنت مدعو لفحص كوليسترول مجاني",
-    hello: (n: string) => `مرحباً ${n}،`,
-    body: "قد يكون ارتفاع الكوليسترول متوارثاً في العائلة، وعلاجه سهل عند اكتشافه مبكراً. يسعدنا أن نقدم لك فحص دم مجانياً في مركز صحي قريب منك.",
-    detail: "يستغرق الفحص حوالي 10 دقائق، ولا تحتاج إلى الصيام.",
-    choose: "اختر الموعد المناسب",
-    book: "احجز موعدي",
-    booked: "تم حجز موعدك",
-    reminder: "سنرسل لك تذكيراً قبل الموعد بيوم.",
-    closed: "تم استخدام هذه الدعوة من قبل. إذا احتجت إلى مساعدة، اتصل بمركزك الصحي.",
-    privacy: "معلوماتك سرية، ولا يطلع عليها إلا مركزك الصحي.",
-    from: "مركزك الصحي",
-    mock: "عرض تجريبي فقط. لم تُرسل أي رسالة ولم يُحجز أي موعد.",
-    at: "في",
-  },
-};
-
-function slotText(slot: string, lang: "ar" | "en") {
+function slotText(slot: string, lang: Lang) {
   const [when, clinic] = slot.split(" | ");
+  if (!clinic) return { day: when, clinic: "" };
   const [d, time] = when.split(" ");
   const date = new Date(`${d}T${time}:00`);
-  const locale = lang === "ar" ? "ar-AE" : "en-GB";
+  const locale = lang === "ar" ? "ar-AE-u-nu-latn" : "en-GB";
   const day = date.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" });
   const hm = date.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
-  return { day: `${day}، ${hm}`.replace("،", lang === "ar" ? "،" : ","), clinic: lang === "ar" ? CLINIC_AR[clinic] ?? clinic : clinic };
+  return { day: `${day}${lang === "ar" ? "،" : ","} ${hm}`, clinic: lang === "ar" ? CLINIC_AR[clinic] ?? clinic : clinic };
 }
 
+// What the invited relative sees on their phone: three short steps and four ways to answer.
 export default function Invite({ token }: { token: string }) {
   const { data, error } = useApi<View>(`/api/invite/${token}`);
-  const [lang, setLang] = useState<"ar" | "en">("en");
+  const [lang, setLang] = useState<Lang>("en");
+  const [step, setStep] = useState<"read" | "pick" | "already">("read");
   const [pick, setPick] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [why, setWhy] = useState(false);
+  const known = data?.lang;
   useEffect(() => {
-    if (data) setLang(data.lang === "ar" ? "ar" : "en");
-  }, [data?.lang]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (known) setLang(known === "ar" ? "ar" : "en");
+  }, [known]);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Loading</p>;
   const t = T[lang];
+  const shell = (body: React.ReactNode) => (
+    <div className="phone" dir={lang === "ar" ? "rtl" : "ltr"} lang={lang}>
+      <div className="spread" style={{ alignItems: "center" }}>
+        <span className="small muted">{t.from}</span>
+        <button className="ghost small" onClick={() => setLang(lang === "ar" ? "en" : "ar")} lang={lang === "ar" ? "en" : "ar"}>
+          {lang === "ar" ? "English" : "العربية"}
+        </button>
+      </div>
+      {body}
+      <p className="small muted" style={{ marginTop: 18, marginBottom: 0 }}>
+        {t.mock}
+      </p>
+    </div>
+  );
 
-  async function book() {
-    if (!pick) return;
+  if (error) return shell(<Closed t={t} />);
+  if (!data) return shell(<div className="skeleton" style={{ width: "70%", marginTop: 16 }} />);
+
+  async function respond(choice: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
-    setErr(null);
+    setFailed(false);
     try {
-      await post(`/api/invite/${token}/book`, { slot: pick });
+      await post(`/api/invite/${token}/respond`, { choice, ...extra });
       changed();
-    } catch (e) {
-      setErr(String((e as Error).message));
+    } catch {
+      setFailed(true);
     } finally {
       setBusy(false);
     }
   }
+  const err = failed && <p className="error">{t.error}</p>;
 
+  if (data.state === "closed") return shell(<Closed t={t} />);
+  if (data.state === "booked" && data.slot) {
+    const s = slotText(data.slot, lang);
+    return shell(
+      <>
+        <p className="small muted step">{t.step.replace("{n}", "3")}</p>
+        <h1>{t.booked_title}</h1>
+        <div className="notice">
+          <strong>{s.day}</strong>
+          <br />
+          {s.clinic}
+        </div>
+        <p style={{ marginTop: 12 }}>{t.booked_body}</p>
+      </>,
+    );
+  }
+  if (data.state === "declined") return shell(<Outcome title={t.declined_title} body={t.declined_body} />);
+  if (data.state === "call_requested") return shell(<Outcome title={t.call_title} body={t.call_body} />);
+  if (data.state === "already_tested") return shell(<Outcome title={t.already_title} body={t.already_done} />);
+
+  if (step === "already")
+    return shell(
+      <>
+        <h1>{t.already_title}</h1>
+        <p>{t.already_body}</p>
+        <button className="primary wide" disabled={busy} onClick={() => respond("already_tested", { share: true })}>
+          {t.share_yes}
+        </button>
+        <button className="wide" disabled={busy} onClick={() => respond("already_tested", { share: false })}>
+          {t.share_no}
+        </button>
+        <button className="ghost wide" onClick={() => setStep("read")}>
+          {t.back}
+        </button>
+        {err}
+      </>,
+    );
+
+  if (step === "pick")
+    return shell(
+      <>
+        <p className="small muted step">{t.step.replace("{n}", "2")}</p>
+        <h1>{t.pick}</h1>
+        <div role="radiogroup">
+          {data.slots.map((s) => {
+            const st = slotText(s, lang);
+            return (
+              <label key={s} className={`slot ${pick === s ? "on" : ""}`}>
+                <input type="radio" name="slot" checked={pick === s} onChange={() => setPick(s)} />
+                <span>
+                  <strong>{st.day}</strong>
+                  <br />
+                  <span className="small muted">{st.clinic}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <button className="primary wide" disabled={!pick || busy} onClick={() => respond("book", { slot: pick })}>
+          {t.book}
+        </button>
+        <button className="ghost wide" onClick={() => setStep("read")}>
+          {t.back}
+        </button>
+        {err}
+      </>,
+    );
+
+  return shell(
+    <>
+      <p className="small muted step">{t.step.replace("{n}", "1")}</p>
+      <h1>{t.title}</h1>
+      <p>{t.hello.replace("{name}", data.given)}</p>
+      <p>{t.body}</p>
+      <p className="muted">{t.detail}</p>
+      <button className="primary wide" onClick={() => setStep("pick")}>
+        {t.choose}
+      </button>
+      <button className="wide" onClick={() => setStep("already")}>
+        {t.already}
+      </button>
+      <button className="wide" disabled={busy} onClick={() => respond("call_me")}>
+        {t.call}
+      </button>
+      <button className="ghost wide" disabled={busy} onClick={() => respond("decline")}>
+        {t.no}
+      </button>
+      {err}
+      <button className="link small" aria-expanded={why} onClick={() => setWhy(!why)}>
+        {t.why_q}
+      </button>
+      {why && <p className="small">{t.why_a}</p>}
+      <p className="small muted" style={{ marginBottom: 0 }}>
+        {t.privacy}
+      </p>
+    </>,
+  );
+}
+
+function Outcome({ title, body }: { title: string; body: string }) {
+  return (
+    <>
+      <h1>{title}</h1>
+      <p>{body}</p>
+    </>
+  );
+}
+
+function Closed({ t }: { t: typeof en }) {
+  return <Outcome title={t.closed_title} body={t.closed_body} />;
+}
+
+// Staff preview: the same page in a phone frame, with a link to open it on its own.
+export function InvitePreview({ token }: { token: string }) {
   return (
     <div className="stack">
       <div className="spread">
         <div>
-          <h1>Invitation preview</h1>
-          <p className="muted">What the relative sees when they open the link on their phone.</p>
+          <h1>What the relative sees</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            This is the page behind the link in the SMS. It works here: answer as the relative to see what happens next.
+          </p>
         </div>
-        <div className="lang-toggle" role="group" aria-label="Language">
-          <button className={lang === "ar" ? "on" : ""} onClick={() => setLang("ar")} lang="ar">
-            العربية
-          </button>
-          <button className={lang === "en" ? "on" : ""} onClick={() => setLang("en")}>
-            English
-          </button>
+        <div className="row">
+          <a href={`#/i/${token}`} target="_blank" rel="noreferrer">
+            Open on its own
+          </a>
+          <a href="#/families">Back to invitations</a>
         </div>
       </div>
-
-      <div className="phone" dir={lang === "ar" ? "rtl" : "ltr"} lang={lang}>
-        <p className="muted small">{t.from}</p>
-        <h1>{t.title}</h1>
-        <p>{t.hello(data.given)}</p>
-        <p>{t.body}</p>
-        <p className="muted">{t.detail}</p>
-
-        {data.status === "open" && (
-          <>
-            <h3 style={{ marginTop: 18 }}>{t.choose}</h3>
-            <div role="radiogroup">
-              {data.slots.map((s) => {
-                const st = slotText(s, lang);
-                return (
-                  <label key={s} className={`slot ${pick === s ? "on" : ""}`}>
-                    <input type="radio" name="slot" checked={pick === s} onChange={() => setPick(s)} />
-                    <span>
-                      <strong>{st.day}</strong>
-                      <br />
-                      <span className="small muted">{st.clinic}</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-            <button className="primary" disabled={!pick || busy} onClick={book}>
-              {t.book}
-            </button>
-          </>
-        )}
-        {data.status === "booked" && data.slot && (
-          <div className="notice" style={{ marginTop: 16 }}>
-            <h3>{t.booked}</h3>
-            <p style={{ margin: 0 }}>
-              {slotText(data.slot, lang).day}
-              <br />
-              {slotText(data.slot, lang).clinic}
-            </p>
-            <p className="small muted" style={{ margin: "8px 0 0" }}>
-              {t.reminder}
-            </p>
-          </div>
-        )}
-        {data.status === "closed" && <p className="quiet">{t.closed}</p>}
-        {err && <p className="error">{err}</p>}
-        <p className="small muted" style={{ marginTop: 18 }}>
-          {t.privacy}
-        </p>
-        <p className="small muted">{t.mock}</p>
+      <div className="phone-frame">
+        <Invite token={token} />
       </div>
-      <p className="muted small" style={{ textAlign: "center" }}>
-        <a href="#/families">Back to invitations</a>
-      </p>
     </div>
   );
 }

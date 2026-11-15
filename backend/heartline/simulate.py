@@ -175,6 +175,13 @@ def _demo_order(db: str) -> tuple[int, ...]:
     return tuple(pid for _, pid in sorted(ranked))
 
 
+def warm():
+    try:
+        _demo_order(str(DB_PATH))
+    except Exception:  # warming is a convenience; the first click will do the work if this fails
+        pass
+
+
 def _candidate(con) -> int:
     for pid in _demo_order(str(DB_PATH)):
         if con.execute("SELECT 1 FROM labs WHERE person_id=?", (pid,)).fetchone():

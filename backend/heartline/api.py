@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -65,6 +66,7 @@ def allow(role: str, *roles: str):
 
 @app.on_event("startup")
 def startup():
+    threading.Thread(target=simulate.warm, daemon=True).start()  # so the first demo click is quick
     con = store.connect()
     try:
         cols = {r[1] for r in con.execute("PRAGMA table_info(scores)")}
@@ -390,6 +392,10 @@ def patient(pid: int, role: str = Depends(actor), con: sqlite3.Connection = Depe
         case["through_family"] = c["source"] != "detection"
         nxt = {**machine.next_step(f, role), "actions": machine.possible(f, role),
                "dismiss_reasons": machine.DISMISS_REASONS}
+        last = con.execute("SELECT action_key, sim_date FROM audit WHERE case_id=? AND action_key<>'refused' "
+                           "ORDER BY id DESC LIMIT 1", (c["id"],)).fetchone()
+        if last and last["sim_date"] == on.isoformat() and last["action_key"] in machine.BY_ACTION:
+            nxt["just_done"] = machine.BY_ACTION[last["action_key"]].done or None  # what the last step did, today only
         if nxt["key"] == "start" and role == "coordinator":
             nxt["plan"] = cascade.plan_cascade(con, c)
 
