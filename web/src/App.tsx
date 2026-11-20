@@ -2,6 +2,7 @@ import { Component, ReactNode, useEffect, useState } from "react";
 import { ROLES, Role, changed, useApi, useRole } from "./api";
 import DemoBar from "./components/DemoBar";
 import Guide, { GuideState, startDemo } from "./components/Guide";
+import Links from "./components/Links";
 import PipelineOverlay from "./components/Pipeline";
 import TimeWarp from "./components/TimeWarp";
 import Try from "./screens/Try";
@@ -159,6 +160,7 @@ export default function App() {
             </a>
           </nav>
           <span className="today">{guided ? "Synthetic data. Not for clinical use." : `Viewing as ${me.name}, ${me.title.toLowerCase()}. Synthetic data.`}</span>
+          <Links />
         </div>
       </header>
       {guided ? (
