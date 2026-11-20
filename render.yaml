@@ -1,0 +1,26 @@
+# Render blueprint for the Heart Line API: one always-on process built from the Dockerfile,
+# so every request sees the same demo database. The web app is served by Vercel, which
+# forwards /api/* here (see vercel.json). The container also serves the web app itself.
+services:
+  - type: web
+    name: heart-line-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/roles
+    autoDeploy: true
+    envVars:
+      - key: PORT                  # the Dockerfile listens on 8010
+        value: "8010"
+      - key: HEARTLINE_ORIGINS
+        value: "*"
+      - key: HEARTLINE_PUBLIC_URL  # base of booking links in emailed invitations
+        value: https://heart-line-kohl.vercel.app
+      # Optional. Left blank, the relative's page uses the browser's voice and email is preview-only.
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
